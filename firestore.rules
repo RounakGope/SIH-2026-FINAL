@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Staff = anyone signed in with email/password (experts and officers).
+    // Farmers use anonymous sign-in.
+    function signedIn() { return request.auth != null; }
+    function isStaff() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /cases/{caseId} {
+      // Prototype: any signed-in user can read cases (the farmer app shows
+      // nearby outbreaks; the officer map needs all of them).
+      allow read: if signedIn();
+      // A farmer creates and updates their own cases; staff can create demo data.
+      allow create: if signedIn() && (request.resource.data.uid == request.auth.uid || isStaff());
+      allow update: if (signedIn() && resource.data.uid == request.auth.uid) || isStaff();
+      allow delete: if isStaff();
+    }
+
+    match /farms/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+  }
+}

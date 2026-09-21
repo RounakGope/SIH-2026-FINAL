@@ -1,0 +1,112 @@
+// Risk rules, evaluated on the phone so alerts still work offline.
+// CONTENT TEAM: check every threshold against its source before the demo.
+import { ipmFor, THRESHOLD } from './ipm';
+
+export const CROPS = {
+  Cotton: { mr: 'कापूस', icon: '🌱', variety: 'Bt hybrid (BG-II)', model: true },
+  Soybean: { mr: 'सोयाबीन', icon: '🌿', variety: 'JS-335', model: false },
+  Tur: { mr: 'तूर', icon: '🫘', variety: 'BDN-711', model: false },
+  Grape: { mr: 'द्राक्ष', icon: '🍇', variety: 'Thompson Seedless', model: false }
+};
+
+export function cropDay(sowDate, today = new Date()) {
+  if (!sowDate) return null;
+  return Math.max(1, Math.round((today - new Date(sowDate)) / 86400000));
+}
+
+// Stage names as used in the design (cotton).
+export function stageFor(day) {
+  if (day == null) return '';
+  return day < 30 ? 'Seedling' : day < 60 ? 'Squaring' : day < 96 ? 'Boll formation' : 'Boll maturation';
+}
+export const STAGE_MR = {
+  Seedling: 'रोप अवस्था', Squaring: 'पाते अवस्था', 'Boll formation': 'बोंड धारणा', 'Boll maturation': 'बोंड परिपक्वता'
+};
+
+// Pink bollworm: ETL = 8 moths per trap per night for 3 consecutive nights
+// (ICAR-CICR cotton advisory, as cited in the deck).
+const PBW_ETL = 8;
+
+function pinkBollworm(farm) {
+  const traps = [...(farm.traps || [])].sort((a, b) => a.date.localeCompare(b.date));
+  const last3 = traps.slice(-3);
+  const latest = traps[traps.length - 1];
+  const above3 = last3.length === 3 && last3.every(t => t.moths >= PBW_ETL);
+  let level = 'LOW';
+  if (above3) level = 'HIGH';
+  else if (latest && latest.moths >= PBW_ETL * 0.6) level = 'MEDIUM';
+  const avg = last3.length ? Math.round((last3.reduce((s, t) => s + t.moths, 0) / last3.length) * 10) / 10 : null;
+  return {
+    id: 'pbw',
+    pest: { en: 'Pink bollworm', mr: 'गुलाबी बोंडअळी' },
+    level,
+    trigger: traps.length === 0
+      ? { en: 'No trap counts yet. Add tonight’s count below.', mr: 'अजून सापळा नोंद नाही. आजची संख्या खाली भरा.' }
+      : above3
+        ? { en: `Traps averaged ${avg} moths per trap for 3 nights running. The economic threshold is ${PBW_ETL}.`, mr: `सलग 3 रात्री सरासरी ${avg} पतंग प्रति सापळा. आर्थिक नुकसान पातळी ${PBW_ETL} आहे.` }
+        : { en: `Latest trap count ${latest.moths} moths (ETL ${PBW_ETL} for 3 nights).`, mr: `शेवटची नोंद ${latest.moths} पतंग (पातळी ${PBW_ETL}, सलग 3 रात्री).` },
+    action: level === 'HIGH'
+      ? { en: 'Check 20 green bolls today. Spray only if 2 or more are infested.', mr: 'आज 20 हिरवी बोंडे तपासा. 2 किंवा अधिक बाधित असतील तरच फवारणी करा.' }
+      : { en: 'Keep pheromone traps up and count every morning.', mr: 'कामगंध सापळे लावून ठेवा आणि रोज सकाळी मोजा.' },
+    traps
+  };
+}
+
+// Example weather rule from the deck: humidity above 85% with rain on 3 or more
+// of the next 5 days → leaf-spot risk. TODO: confirm with SAU/KVK.
+function leafSpot(weather) {
+  if (!weather) {
+    return { id: 'leafspot', pest: { en: 'Leaf spot (weather)', mr: 'पानावरील ठिपके (हवामान)' }, level: 'LOW',
+      trigger: { en: 'Forecast not loaded yet. Connect once to fetch it.', mr: 'हवामान अंदाज अजून आलेला नाही.' },
+      action: { en: 'Open the app online once to fetch the 5-day forecast.', mr: 'अंदाजासाठी एकदा इंटरनेटसह अ‍ॅप उघडा.' } };
+  }
+  const wetDays = weather.days.filter(d => d.rhMean > 85 && d.rain >= 2.5).length;
+  const level = wetDays >= 3 ? 'MEDIUM' : 'LOW';
+  return {
+    id: 'leafspot',
+    pest: { en: 'Leaf spot (weather)', mr: 'पानावरील ठिपके (हवामान)' },
+    level,
+    trigger: { en: `Humidity above 85% with rain on ${wetDays} of the next 5 days.`, mr: `पुढील 5 पैकी ${wetDays} दिवस 85% पेक्षा जास्त आर्द्रता व पाऊस.` },
+    action: level === 'MEDIUM'
+      ? { en: 'Avoid late irrigation; do a 10-plant scan in 2 days.', mr: 'उशिरा पाणी देणे टाळा; 2 दिवसांत 10 झाडांचे स्कॅन करा.' }
+      : { en: 'No action needed this week.', mr: 'या आठवड्यात कृती आवश्यक नाही.' }
+  };
+}
+
+// Outbreak near you: confirmed or confident cases in the same taluka, last 14 days.
+export function countsForAlert(c) {
+  const conf = c.status === 'confirmed' || c.status === 'corrected' ||
+    (c.status === 'auto' && (c.confidence ?? 0) >= THRESHOLD);
+  return conf && ipmFor(c.label).diseased;
+}
+function nearby(talukaCases, taluka, myUid) {
+  const since = Date.now() - 14 * 86400000;
+  const recent = talukaCases.filter(c => c.createdAt >= since && c.uid !== myUid && countsForAlert(c));
+  const byLabel = {};
+  recent.forEach(c => { byLabel[c.label] = (byLabel[c.label] || 0) + 1; });
+  const top = Object.entries(byLabel).sort((a, b) => b[1] - a[1])[0];
+  const n = top ? top[1] : 0;
+  const level = n >= 15 ? 'HIGH' : n >= 6 ? 'MEDIUM' : 'LOW';
+  const name = top ? ipmFor(top[0]).name : { en: 'No outbreaks', mr: 'प्रादुर्भाव नाही' };
+  return {
+    id: 'nearby',
+    pest: top ? name : { en: 'Outbreaks near you', mr: 'जवळपास प्रादुर्भाव' },
+    level,
+    trigger: top
+      ? { en: `${n} farms in ${taluka} reported ${name.en.toLowerCase()} in the last 14 days.`, mr: `${taluka} मध्ये गेल्या 14 दिवसांत ${n} शेतांत ${name.mr} नोंद.` }
+      : { en: `No confirmed reports in ${taluka} in the last 14 days.`, mr: `${taluka} मध्ये गेल्या 14 दिवसांत नोंद नाही.` },
+    action: top
+      ? { en: 'Scan your field this week, before it spreads to you.', mr: 'पसरण्यापूर्वी या आठवड्यात तुमच्या शेताचे स्कॅन करा.' }
+      : { en: 'Nothing to do.', mr: 'कृती नाही.' }
+  };
+}
+
+const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+export function evaluateRisks(farm, weather, talukaCases, myUid) {
+  const out = [];
+  if (farm.crop === 'Cotton') out.push(pinkBollworm(farm));
+  out.push(leafSpot(weather));
+  out.push(nearby(talukaCases || [], farm.taluka, myUid));
+  return out.sort((a, b) => ORDER[a.level] - ORDER[b.level]);
+}
+export { PBW_ETL };
