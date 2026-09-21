@@ -34,6 +34,8 @@ jassid_damage
 other
 ```
 
+> **Train on cotton.** All four disease classes are cotton conditions (`bacterial_blight`, `leaf_curl` and `jassid_damage` are all cotton; the app's retake prompt literally says "one cotton leaf filling the frame"), and the IPM advice is written against the Maharashtra cotton package of practices. A model trained on tomato or potato leaves will score well in your notebook and be wrong in the field.
+
 These are not arbitrary labels. Each one is a key into the app's IPM advice content (`src/content/ipm.js`) — the symptom description, the treatment ladder, the safe dose and the Marathi translation are all written against these five names. A class that isn't in this list has no advice attached to it.
 
 **Casing and separators are forgiving.** The app normalises labels — lowercases them and turns spaces and hyphens into underscores. So `Bacterial Blight`, `bacterial-blight` and `bacterial_blight` all land correctly. Don't stress about that part.
