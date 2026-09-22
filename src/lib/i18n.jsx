@@ -59,6 +59,7 @@ const S = {
   tanks: { en: 'tanks of {l} L', mr: '{l} लि. टाक्या' },
   perTank: { en: 'product per tank', mr: 'प्रति टाकी औषध' },
   waitPeriod: { en: 'waiting period', mr: 'प्रतीक्षा कालावधी' },
+  seeLabel: { en: 'read the pack', mr: 'पॅकवर पहा' },
   costTitle: { en: 'What it costs, what it saves', mr: 'खर्च किती, बचत किती' },
   valueProtected: { en: 'Value protected', mr: 'वाचवलेले उत्पन्न' },
   youPay: { en: 'You pay', mr: 'तुमचा खर्च' },

@@ -226,7 +226,10 @@ function Ladder({ info, chemOpen, acres }) {
           <div className="safe-grid">
             <div className="stat"><b>{acres * s.tanksPerAcre}</b><span>{t('tanks', { l: s.tankL })}</span></div>
             <div className="stat"><b>{s.gPerTank ?? <span className="todo">TODO</span>}{s.gPerTank != null && ' g'}</b><span>{t('perTank')}</span></div>
-            <div className="stat"><b>{s.waitDays ?? <span className="todo">TODO</span>}{s.waitDays != null && ' d'}</b><span>{t('waitPeriod')}</span></div>
+            {/* The pre-harvest interval is printed on the pack and differs between
+                manufacturers of the same active ingredient, so when we don't hold a
+                verified figure we send the farmer to the label rather than guess. */}
+            <div className="stat"><b style={s.waitDays == null ? { fontSize: 15 } : undefined}>{s.waitDays != null ? s.waitDays + ' d' : t('seeLabel')}</b><span>{t('waitPeriod')}</span></div>
             <div className="stat"><b style={{ fontSize: 15 }}>{s.ppe}</b><span>PPE</span></div>
           </div>
           <div className="small muted" style={{ marginTop: 6 }}>Source: <Txt s={s.source} /></div>
