@@ -1,25 +1,43 @@
 import { useEffect, useState } from 'react';
 import { useLang, LANGS } from '../lib/i18n';
-import { initFarmer, getFarm, saveFarm, watchMyCases, mode } from '../lib/store';
+import { initFarmer, getFarm, getPlots, saveFarm, setActivePlot, watchPlots, watchSettings, watchMyCases, mode } from '../lib/store';
 import { loadModel } from '../lib/model';
 import { CROPS, cropName } from '../content/rules';
 import { talukaName } from '../content/talukas';
-import { Leaf, Home as HomeIcon, Camera, Chart, Sprout } from './Icons';
+import { Leaf, Home as HomeIcon, Camera, Chart, Sprout, MapIcon, Users } from './Icons';
 import Setup from './Setup';
 import Home from './Home';
 import Scan from './Scan';
 import Progress from './Progress';
+import Nearby from './Nearby';
+import { nextDeadline } from '../content/schemes';
+
+const pickText = (o, lang) => o[lang] || o.en;
 
 export default function FarmerApp() {
   const { t, lang, setLang } = useLang();
   const [user, setUser] = useState(null);
   const [farm, setFarm] = useState(getFarm);
+  const [plots, setPlots] = useState(getPlots);
+  const [settings, setSettings] = useState({});
   const [tab, setTab] = useState(getFarm() ? 'home' : 'setup');
-  const [cases, setCases] = useState([]);
+  const [allCases, setCases] = useState([]);
   const [pending, setPending] = useState(0);
   const online = useOnline();
 
   useEffect(() => initFarmer(setUser), []);
+  useEffect(() => watchPlots((ps, active) => { setPlots(ps); setFarm(active); }), []);
+  useEffect(() => watchSettings(setSettings), []);
+  // Deadline engine: a phone notification in the last 30 days before the PMFBY
+  // enrolment cut-off for this crop's season, at most once a day.
+  useEffect(() => {
+    if (!farm || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const due = nextDeadline(farm.crop);
+    const today = new Date().toISOString().slice(0, 10);
+    if (!due || due.days > 30 || localStorage.getItem('fr_reminded') === today + due.id) return;
+    new Notification(pickText(due.label, lang), { body: t('daysLeft', { n: due.days }), icon: '/icons/icon-192.png' });
+    localStorage.setItem('fr_reminded', today + due.id);
+  }, [farm?.crop]);
   // Load the farmer's crop model as soon as the app opens: the first scan is then
   // instant, and the service worker caches the files for use offline.
   useEffect(() => { if (farm?.crop && CROPS[farm.crop]?.model) loadModel(farm.crop); }, [farm?.crop]);
@@ -31,17 +49,21 @@ export default function FarmerApp() {
     });
   }, [user]);
 
-  const updateFarm = f => { setFarm(f); saveFarm(f, user?.uid); };
+  // This plot's walks. Walks from before plots existed belong to the first plot.
+  const cases = farm ? allCases.filter(c => (c.plotId || plots[0]?.id) === farm.id) : [];
+  const updateFarm = f => saveFarm(f, user?.uid);
 
   let pill;
   if (mode === 'local') pill = <span className="pill pill-neutral"><span className="dot" />{t('localMode')}</span>;
   else if (pending > 0) pill = <span className="pill pill-wait"><span className="dot" />{online ? t('syncing', { n: pending }) : t('offlineWaiting', { n: pending })}</span>;
   else pill = <span className="pill pill-ok"><span className="dot" />{online ? t('synced') : t('offlineReady')}</span>;
 
+  const newPlot = () => { setFarm(null); setTab('setup'); };
   const screen = !farm || tab === 'setup'
-    ? <Setup farm={farm} onSave={f => { updateFarm(f); setTab('home'); }} />
+    ? <Setup farm={farm} settings={settings} onSave={f => { updateFarm(f); setTab('home'); }} onNewPlot={newPlot} />
     : tab === 'home' ? <Home farm={farm} myCases={cases} onFarm={updateFarm} goScan={() => setTab('scan')} />
     : tab === 'scan' ? <Scan farm={farm} user={user} cases={cases} goProgress={() => setTab('progress')} />
+    : tab === 'nearby' ? <Nearby farm={farm} myCases={cases} />
     : <Progress farm={farm} cases={cases} />;
 
   return (
@@ -50,8 +72,18 @@ export default function FarmerApp() {
         <div className="logo"><Leaf /></div>
         <div className="brand">
           <div className="brand-name">{t('appName')}</div>
-          <div className="brand-sub">{farm ? `${talukaName(farm.taluka, lang)} · ${cropName(farm.crop, lang)}` : talukaName('Wardha', lang)}</div>
+          {settings.assistant && plots.length > 0 ? (
+            // Agri-assistant mode: one phone, many farmers' plots.
+            <select className="plot-switch" value={farm?.id || ''} aria-label={t('plot')}
+              onChange={e => e.target.value === '+' ? newPlot() : setActivePlot(e.target.value)}>
+              {plots.map(p => <option key={p.id} value={p.id}>{(p.farmerName || t('plot')) + ' · ' + cropName(p.crop, lang)}</option>)}
+              <option value="+">+ {t('addPlot')}</option>
+            </select>
+          ) : (
+            <div className="brand-sub">{farm ? `${talukaName(farm.taluka, lang)} · ${cropName(farm.crop, lang)}` : talukaName('Wardha', lang)}</div>
+          )}
         </div>
+        {settings.assistant && <span className="pill pill-neutral" title={t('assistantMode')}><Users s={13} /></span>}
         {pill}
         <div className="lang-toggle">
           {LANGS.map(([code, label]) => (
@@ -65,6 +97,7 @@ export default function FarmerApp() {
           <div className="tabbar-inner">
             <TabBtn on={tab === 'home'} onClick={() => setTab('home')} icon={<HomeIcon />} label={t('home')} />
             <TabBtn on={tab === 'scan'} onClick={() => setTab('scan')} icon={<Camera />} label={t('scan')} />
+            <TabBtn on={tab === 'nearby'} onClick={() => setTab('nearby')} icon={<MapIcon />} label={t('nearby')} />
             <TabBtn on={tab === 'progress'} onClick={() => setTab('progress')} icon={<Chart />} label={t('progress')} />
             <TabBtn on={tab === 'setup'} onClick={() => setTab('setup')} icon={<Sprout />} label={t('field')} />
           </div>

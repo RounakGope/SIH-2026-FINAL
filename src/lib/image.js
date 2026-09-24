@@ -4,9 +4,9 @@ export async function loadImage(file) {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
-    img.decoding = 'async';
-    img.src = url;
-    await img.decode();
+    // The load event, not img.decode(): decode() can stall while the page is in
+    // the background, which would leave the scan spinning forever.
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('unreadable image')); img.src = url; });
     return img;
   } finally {
     setTimeout(() => URL.revokeObjectURL(url), 2000);

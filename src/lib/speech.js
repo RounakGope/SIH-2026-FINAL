@@ -45,3 +45,40 @@ function speakOnDevice(text, lang) {
   window.speechSynthesis.speak(u);
   return 'device';
 }
+
+// ---------- speech to text (IVR intake) ----------
+// Bhashini ASR through the API when available (audio recorded in the browser and
+// sent as base64), else the browser's own recogniser (Chrome supports mr-IN,
+// hi-IN and en-IN). Resolves to the transcript, or '' if nothing was heard.
+export function canListen() {
+  return (apiEnabled && !!navigator.mediaDevices?.getUserMedia) || 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+}
+
+export async function listen(lang, seconds = 8) {
+  if (apiEnabled && navigator.onLine && navigator.mediaDevices?.getUserMedia) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks = [];
+      rec.ondataavailable = e => chunks.push(e.data);
+      const done = new Promise(r => { rec.onstop = r; });
+      rec.start(); setTimeout(() => rec.stop(), seconds * 1000);
+      await done; stream.getTracks().forEach(t => t.stop());
+      const b64 = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(new Blob(chunks, { type: rec.mimeType })); });
+      const { text } = await api('/speech/asr', { method: 'POST', body: { audio: b64, mime: rec.mimeType, lang } });
+      if (text) return text;
+    } catch { /* fall back to the browser recogniser */ }
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return '';
+  return new Promise(resolve => {
+    const r = new SR();
+    r.lang = VOICE_LANG[lang] || 'en-IN'; r.interimResults = false; r.maxAlternatives = 1;
+    let text = '';
+    r.onresult = e => { text = e.results[0][0].transcript; };
+    r.onend = () => resolve(text);
+    r.onerror = () => resolve(text);
+    r.start();
+    setTimeout(() => { try { r.stop(); } catch {} }, seconds * 1000);
+  });
+}

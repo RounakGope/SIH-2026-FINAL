@@ -75,19 +75,27 @@ function pinkBollworm(farm) {
 
 // Example weather rule from the deck: humidity above 85% with rain on 3 or more
 // of the next 5 days → leaf-spot risk. TODO: confirm with SAU/KVK.
-function leafSpot(weather) {
-  if (!weather) {
+function leafSpot(weather, wet) {
+  if (!weather && wet == null) {
     return { id: 'leafspot', pest: { en: 'Leaf spot (weather)', mr: 'पानावरील ठिपके (हवामान)', hi: 'पत्ती धब्बा (मौसम)' }, level: 'LOW',
       trigger: { en: 'Forecast not loaded yet. Connect once to fetch it.', mr: 'हवामान अंदाज अजून आलेला नाही.', hi: 'मौसम का पूर्वानुमान अभी नहीं आया।' },
       action: { en: 'Open the app online once to fetch the 5-day forecast.', mr: 'अंदाजासाठी एकदा इंटरनेटसह अ‍ॅप उघडा.', hi: 'पूर्वानुमान के लिए एक बार इंटरनेट के साथ ऐप खोलें।' } };
   }
-  const wetDays = weather.days.filter(d => d.rhMean > 85 && d.rain >= 2.5).length;
-  const level = wetDays >= 3 ? 'MEDIUM' : 'LOW';
+  const wetDays = weather ? weather.days.filter(d => d.rhMean > 85 && d.rain >= 2.5).length : 0;
+  // Example thresholds, to be tuned by SAU/KVK: 3 wet days in the forecast, or a
+  // field sensor showing the leaves wet 10 h or more in the last 24 h.
+  const level = wetDays >= 3 || (wet != null && wet >= 10) ? 'MEDIUM' : 'LOW';
+  const sensor = wet == null ? { en: '', mr: '', hi: '' }
+    : { en: ` Field sensor: leaves wet ${wet} h in the last 24 h.`, mr: ` शेतातील सेन्सर: गेल्या 24 तासांत पाने ${wet} तास ओली.`, hi: ` खेत का सेंसर: पिछले 24 घंटे में पत्तियाँ ${wet} घंटे गीली।` };
   return {
     id: 'leafspot',
     pest: { en: 'Leaf spot (weather)', mr: 'पानावरील ठिपके (हवामान)', hi: 'पत्ती धब्बा (मौसम)' },
     level,
-    trigger: { en: `Humidity above 85% with rain on ${wetDays} of the next 5 days.`, mr: `पुढील 5 पैकी ${wetDays} दिवस 85% पेक्षा जास्त आर्द्रता व पाऊस.`, hi: `अगले 5 में से ${wetDays} दिन 85% से ज़्यादा नमी और बारिश।` },
+    trigger: {
+      en: `Humidity above 85% with rain on ${wetDays} of the next 5 days.` + sensor.en,
+      mr: `पुढील 5 पैकी ${wetDays} दिवस 85% पेक्षा जास्त आर्द्रता व पाऊस.` + sensor.mr,
+      hi: `अगले 5 में से ${wetDays} दिन 85% से ज़्यादा नमी और बारिश।` + sensor.hi
+    },
     action: level === 'MEDIUM'
       ? { en: 'Avoid late irrigation; do a 10-plant scan in 2 days.', mr: 'उशिरा पाणी देणे टाळा; 2 दिवसांत 10 झाडांचे स्कॅन करा.', hi: 'देर शाम सिंचाई न करें; 2 दिन में 10 पौधों का स्कैन करें।' }
       : { en: 'No action needed this week.', mr: 'या आठवड्यात कृती आवश्यक नाही.', hi: 'इस हफ़्ते कुछ करने की ज़रूरत नहीं।' }
@@ -127,10 +135,10 @@ function nearby(talukaCases, farm, myCaseIds) {
 }
 
 const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-export function evaluateRisks(farm, weather, talukaCases, myCaseIds = new Set()) {
+export function evaluateRisks(farm, weather, talukaCases, myCaseIds = new Set(), wet = null) {
   const out = [];
   if (farm.crop === 'Cotton') out.push(pinkBollworm(farm));
-  out.push(leafSpot(weather));
+  out.push(leafSpot(weather, wet));
   out.push(nearby(talukaCases || [], farm, myCaseIds));
   return out.sort((a, b) => ORDER[a.level] - ORDER[b.level]);
 }

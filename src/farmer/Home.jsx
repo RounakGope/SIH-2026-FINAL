@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useLang, LOCALE } from '../lib/i18n';
 import { evaluateRisks, cropDay, PBW_ETL, cropName } from '../content/rules';
 import { getWeather } from '../lib/weather';
-import { watchTaluka } from '../lib/store';
+import { watchTaluka, watchSensor } from '../lib/store';
+import { startSensorSim, wetHours } from '../lib/sensorSim';
 import { Alert } from './Icons';
 import Speak from './Speak';
 
@@ -11,11 +12,15 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
   const [weather, setWeather] = useState(null);
   const [talukaCases, setTalukaCases] = useState([]);
   const [count, setCount] = useState('');
+  const [sensor, setSensor] = useState([]);
 
   useEffect(() => { getWeather(farm.lat, farm.lon).then(setWeather); }, [farm.lat, farm.lon]);
   useEffect(() => watchTaluka(farm.taluka, setTalukaCases), [farm.taluka]);
+  useEffect(() => { if (farm.sensorSim) startSensorSim(farm.id); return watchSensor(farm.id, setSensor); }, [farm.id, farm.sensorSim]);
+  const lastReading = sensor[sensor.length - 1];
+  const wet = lastReading ? wetHours(sensor) : null;
 
-  const risks = evaluateRisks(farm, weather, talukaCases, new Set(myCases.map(c => c.id)));
+  const risks = evaluateRisks(farm, weather, talukaCases, new Set(myCases.map(c => c.id)), wet);
   const [top, ...rest] = risks;
   const pbw = risks.find(r => r.id === 'pbw');
 
@@ -88,6 +93,22 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
           </div>
         </section>
       ))}
+
+      {lastReading && (
+        <section className="card-light">
+          <div className="row between">
+            <div className="section-h">{t('sensorTitle')}</div>
+            {lastReading.device === 'simulator' && <span className="pill pill-neutral">{t('simulated')}</span>}
+          </div>
+          <div className="kv">
+            <div><b>{wet} h</b><span>{t('leafWet24')}</span></div>
+            <div><b>{lastReading.soilMoisture}%</b><span>{t('soilMoisture')}</span></div>
+            <div><b>{lastReading.tempC}°</b><span>{t('airTemp')}</span></div>
+            <div><b>{lastReading.rh}%</b><span>{t('humidity')}</span></div>
+          </div>
+          <div className="small muted" style={{ marginTop: 6 }}>{t('lastReading', { t: new Date(lastReading.at).toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' }) })}</div>
+        </section>
+      )}
 
       {weather && (
         <section className="card-light">

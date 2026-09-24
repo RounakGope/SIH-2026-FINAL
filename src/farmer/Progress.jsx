@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import { useLang } from '../lib/i18n';
-import { ipmFor, ECONOMICS } from '../content/ipm';
+import { ipmFor } from '../content/ipm';
+import { PRICE } from '../content/schemes';
+import { evidencePdf } from '../lib/evidence';
+import Schemes from './Schemes';
 
 // Field severity index = % plants infected × average leaf severity ÷ 100.
 export function fieldIndex(c) {
@@ -30,8 +34,15 @@ export default function Progress({ farm, cases }) {
     observed = EXAMPLE.observed; projected = EXAMPLE.projected;
     labels = observed.map((_, i) => 'Wk' + (i + 1));
   }
-  const gap = projected[projected.length - 1] - observed[observed.length - 1];
-  const kept = observed[0] < 1 ? 0 : Math.max(0, Math.round((farm.acres * ECONOMICS.valueProtectedPerAcre * gap) / 100));
+  const gap = Math.max(0, projected[projected.length - 1] - observed[observed.length - 1]);
+  // Price the gap at MSP with the farmer's own usual yield (entered under Schemes).
+  let yieldQ = null;
+  try { yieldQ = JSON.parse(localStorage.getItem('fr_scheme_inputs'))?.[farm.id]?.yieldQPerAcre ?? null; } catch {}
+  const price = PRICE[farm.crop];
+  const kept = yieldQ && price ? Math.round(yieldQ * farm.acres * price.rs * gap / 100) : null;
+  const [making, setMaking] = useState(false);
+  const [, setInputsVersion] = useState(0); // re-price the gap as the farmer types
+  const makePdf = async () => { setMaking(true); try { await evidencePdf(farm, cases); } finally { setMaking(false); } };
 
   return (
     <main className="content">
@@ -53,8 +64,9 @@ export default function Progress({ farm, cases }) {
       <div className="saved-card">
         <div className="small" style={{ opacity: .85, letterSpacing: '.08em', textTransform: 'uppercase' }}>
           {t('gapTitle')}</div>
-        <b>₹{kept.toLocaleString('en-IN')}</b>
-        <div className="small">{t('yieldKept', { a: farm.acres })} · {t('illustrative')}</div>
+        {kept != null
+          ? <><b>₹{kept.toLocaleString('en-IN')}</b><div className="small">{t('yieldKept', { a: farm.acres })} · {t('atMspShort', { p: price.rs.toLocaleString('en-IN') })}{real ? '' : ' · ' + t('illustrative')}</div></>
+          : <div className="small" style={{ marginTop: 6 }}>{t('enterYield')}</div>}
       </div>
 
       <section className="card">
@@ -75,6 +87,16 @@ export default function Progress({ farm, cases }) {
           </div>
         )}
       </section>
+
+      <section className="card-light">
+        <div className="section-h">{t('evidenceTitle')}</div>
+        <p className="small" style={{ marginTop: 0 }}>{t('evidenceLead')}</p>
+        <button className="btn-big" disabled={making || scans.length === 0} onClick={makePdf}>
+          {making ? t('evidenceMaking') : '📄 ' + t('evidenceButton')}
+        </button>
+      </section>
+
+      <Schemes farm={farm} cases={cases} gapPct={real ? gap : undefined} onChange={() => setInputsVersion(n => n + 1)} />
     </main>
   );
 }

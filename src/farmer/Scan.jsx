@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLang } from '../lib/i18n';
+import { useLang, LOCALE } from '../lib/i18n';
 import { loadModel, classify, modelInput, explain } from '../lib/model';
 import { loadImage, lesionMask, smallJpeg } from '../lib/image';
-import { upsertCase, newId } from '../lib/store';
-import { ipmFor, classesFor, THRESHOLD, TIER_LABEL, ECONOMICS, CHEM_UNLOCK_INDEX } from '../content/ipm';
+import { upsertCase, newId, markTreatment } from '../lib/store';
+import { referralFor } from '../content/labs';
+import { ipmFor, classesFor, THRESHOLD, TIER_LABEL, CHEM_UNLOCK_INDEX } from '../content/ipm';
 import { CROPS, cropDay, stageFor, stageName, cropName } from '../content/rules';
 import { DISTRICT } from '../content/talukas';
 import Speak from './Speak';
@@ -20,6 +21,7 @@ export default function Scan({ farm, user, cases, goProgress }) {
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [addingView, setAddingView] = useState(false); // next photo = underside of the last leaf
   const fileRef = useRef(null);
 
   useEffect(() => { setModel(null); loadModel(farm.crop).then(setModel); }, [farm.crop]);
@@ -50,14 +52,22 @@ export default function Scan({ farm, user, cases, goProgress }) {
     const unsure = shots.some(p => p.confidence < THRESHOLD || p.label === 'other');
     const existing = cases.find(c => c.id === walk.id);
     const decided = existing && ['confirmed', 'corrected', 'lab_referred'].includes(existing.status);
+    // Field severity index = % plants infected × average leaf severity ÷ 100.
+    const sevIndex = round(inf / plants.length * leafSev, 1);
+    // Did the treatment logged on the previous walk work? Compared on the same plot.
+    const prev = cases.filter(c => c.id !== walk.id && c.createdAt < walk.createdAt).sort((a, b) => b.createdAt - a.createdAt)[0];
+    const followUp = prev?.treatment && prev.sevIndex != null
+      ? { prevTreatment: prev.treatment.tier, improved: sevIndex < prev.sevIndex } : {};
     upsertCase({
-      id: walk.id, uid: user.uid, district: DISTRICT, taluka: farm.taluka,
+      id: walk.id, uid: user.uid, plotId: farm.id, district: DISTRICT, taluka: farm.taluka,
+      share: farm.share === true, lang, ...(farm.smsConsent && farm.phone ? { phone: farm.phone } : {}),
+      sevIndex, ...followUp,
       crop: farm.crop, variety: farm.variety, acres: farm.acres, cropDay: day, stage,
       lat: +(+farm.lat).toFixed(2), lon: +(+farm.lon).toFixed(2), // ~1 km precision only
       confidence: round(primary.confidence), top3: primary.top3,
       leafPct: round(leafSev, 1), plantsInfected: inf, plantsWalked: plants.length,
       photo: primary.photo, createdAt: walk.createdAt, updatedAt: Date.now(),
-      modelVersion: model?.demo ? 'demo' : 'tm-v1',
+      modelVersion: model?.demo ? 'demo' : `${crop.toLowerCase()}-v1-fp16`,
       // After an expert decision the label and status are the expert's; don't overwrite them.
       ...(decided ? {} : { label: primary.label, status: unsure ? 'pending_review' : 'auto', expert: null })
     });
@@ -75,14 +85,18 @@ export default function Scan({ farm, user, cases, goProgress }) {
       const demoLabels = ['healthy', classesFor(crop).find(l => ipmFor(l, crop).diseased)];
       const input = modelInput(img, model.size);
       const top = await classify(model, input, sev, demoLabels);
-      const plant = {
-        kind: 'photo', label: top[0].label, confidence: top[0].p,
+      let plant = {
+        kind: 'photo', label: top[0].label, confidence: top[0].p, all: top.map(x => ({ label: x.label, p: round(x.p, 4) })),
         top3: top.slice(0, 3).map(x => ({ label: x.label, p: round(x.p) })),
-        leafPct: sev.pct, mask: sev.maskUrl, photo: smallJpeg(img),
+        leafPct: sev.pct, mask: sev.maskUrl, photo: smallJpeg(img), views: 1,
         cam: explain(model, input, img, top[0].label) // where the model looked
       };
+      const last = walk.plants[walk.plants.length - 1];
+      const merging = addingView && last?.kind === 'photo' && last.views === 1 && last.all;
+      if (merging) plant = combineViews(last, plant);
       await new Promise(r => setTimeout(r, 600)); // let the scan animation read as "analysing"
-      const plants = [...walk.plants, plant].slice(-PLANTS);
+      const plants = merging ? [...walk.plants.slice(0, -1), plant] : [...walk.plants, plant].slice(-PLANTS);
+      setAddingView(false);
       setWalk(w => ({ ...w, plants }));
       saveWalk(plants);
     } catch (ex) {
@@ -112,6 +126,9 @@ export default function Scan({ farm, user, cases, goProgress }) {
       </div>
 
       <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
+      {latest && latest.views === 1 && latest.all && !busy && walk.plants[walk.plants.length - 1] === latest && (
+        <button className="btn-line" onClick={() => { setAddingView(true); fileRef.current.click(); }}>{t('addView')}</button>
+      )}
       <button className="btn-big" disabled={!model || busy || walked >= PLANTS} onClick={() => fileRef.current.click()}>
         📷 {t('capture')}
       </button>
@@ -123,14 +140,14 @@ export default function Scan({ farm, user, cases, goProgress }) {
       {err && <div className="banner">{err}</div>}
 
       {latest && !busy && (
-        <Result plant={latest} farm={farm} crop={crop} day={day} stage={stage} infected={infected} walked={walked}
+        <Result plant={latest} farm={farm} crop={crop} caseId={walk.id} day={day} stage={stage} infected={infected} walked={walked}
           savedCase={savedCase} goProgress={goProgress} />
       )}
     </main>
   );
 }
 
-function Result({ plant, farm, crop, day, stage, infected, walked, savedCase, goProgress }) {
+function Result({ plant, farm, crop, caseId, day, stage, infected, walked, savedCase, goProgress }) {
   const { t, pick, lang } = useLang();
   const info = ipmFor(plant.label, crop);
   const unsure = plant.confidence < THRESHOLD || plant.label === 'other';
@@ -147,6 +164,7 @@ function Result({ plant, farm, crop, day, stage, infected, walked, savedCase, go
           <Speak text={[pick(info.name), pick(info.markers), unsure ? t('unsureBody', { t: Math.round(THRESHOLD * 100) }) : info.steps.filter(s => s.tier !== 'chemical').map(s => pick(s.text)).join(' ')].join('. ')} />
         </div>
         <h3 style={{ fontSize: 21, fontFamily: 'var(--font-heading)', fontWeight: 400 }}>{pick(info.name)}</h3>
+        {plant.views === 2 && <div className="small muted">{t('twoViews')}</div>}
         <div className="stats" style={{ marginTop: 10 }}>
           <div className="stat"><b>{plant.leafPct}%</b><span>{t('severity')}</span></div>
           <div className="stat"><b>{infected}/{walked}</b><span>{t('plantsInfected')}</span></div>
@@ -172,6 +190,13 @@ function Result({ plant, farm, crop, day, stage, infected, walked, savedCase, go
         </div>
       </section>
 
+      {savedCase?.serverCheck && (
+        <div className="server-check">
+          {savedCase.serverCheck.agrees
+            ? t('serverAgrees', { p: Math.round(savedCase.serverCheck.p * 100) })
+            : t('serverDisagrees', { l: pick(ipmFor(savedCase.serverCheck.label, crop).name), p: Math.round(savedCase.serverCheck.p * 100) })}
+        </div>
+      )}
       {expert && <ExpertNote c={savedCase} />}
       {savedCase?.status === 'pending_review' && !expert && unsure === false && (
         <div className="card-light small">{t('waitingExpert')}</div>
@@ -183,13 +208,12 @@ function Result({ plant, farm, crop, day, stage, infected, walked, savedCase, go
           <p className="small" style={{ margin: 0 }}>{t('unsureBody', { t: Math.round(THRESHOLD * 100) })}</p>
           {savedCase?.status === 'pending_review' && <div className="pill pill-wait" style={{ marginTop: 10 }}><span className="dot" />{t('waitingExpert')}</div>}
         </section>
-      ) : info.diseased ? (
+      ) : null}
+      {unsure ? <Referral farm={farm} compact /> : info.diseased ? (
         <>
-          {info.referLab && (
-            <section className="card-warm"><h3>{t('labTitle')}</h3><p className="small" style={{ margin: 0 }}>{t('labBody')}</p></section>
-          )}
-          <Ladder info={info} chemOpen={chemOpen} acres={farm.acres} />
-          {!info.referLab && <Cost acres={farm.acres} />}
+          {info.referLab && <Referral farm={farm} />}
+          <Ladder info={info} chemOpen={chemOpen} acres={farm.acres} caseId={caseId} done={savedCase?.treatment} />
+          {!info.referLab && chemOpen && <Cost info={info} acres={farm.acres} goProgress={goProgress} />}
         </>
       ) : null}
 
@@ -217,7 +241,23 @@ function Txt({ s }) {
   return s.startsWith('TODO') ? <span className="todo">{s}</span> : <>{s}</>;
 }
 
-function Ladder({ info, chemOpen, acres }) {
+// Nearest KVK and the right plant-pathology lab for this crop, with how to send a sample.
+function Referral({ farm, compact }) {
+  const { t, lang } = useLang();
+  const { kvk, lab } = referralFor(farm.crop, farm.lat, farm.lon);
+  return (
+    <section className="card-warm">
+      {!compact && <><h3>{t('labTitle')}</h3><p className="small">{t('labBody')}</p></>}
+      <div className="small"><b>{t('nearestKvk')}:</b> {kvk.name} · {t('km', { n: kvk.km })}</div>
+      <div className="row" style={{ gap: 8, margin: '6px 0', flexWrap: 'wrap' }}>
+        {kvk.phones.map(p => <a key={p} className="btn-line btn-sm" href={'tel:' + p}>{t('call')} {p}</a>)}
+      </div>
+      {lab && <div className="small"><b>{t('nearestLab', { c: cropName(farm.crop, lang) })}:</b> {lab.name}, {lab.address} · {t('km', { n: lab.km })}</div>}
+    </section>
+  );
+}
+
+function Ladder({ info, chemOpen, acres, caseId, done }) {
   const { t, pick, lang } = useLang();
   return (
     <section className="card">
@@ -235,6 +275,9 @@ function Ladder({ info, chemOpen, acres }) {
                 {chem
                   ? (locked ? t('lockedChem') : <Txt s={s.product} />)
                   : <Txt s={pick(s.text)} />}
+                {!locked && (done?.tier === s.tier
+                  ? <div className="step-done">✓ {t('doneOn', { d: new Date(done.at).toLocaleDateString(LOCALE[lang], { day: 'numeric', month: 'short' }) })}</div>
+                  : <div><button className="btn-line btn-sm" style={{ marginTop: 6 }} onClick={() => markTreatment(caseId, s)}>{t('markDone')}</button></div>)}
               </div>
             </div>
           );
@@ -266,24 +309,32 @@ function Ladder({ info, chemOpen, acres }) {
   );
 }
 
-function Cost({ acres }) {
+function Cost({ info, acres, goProgress }) {
   const { t } = useLang();
-  const cost = acres * ECONOMICS.remedyCostPerAcre;
-  const subsidy = Math.round((cost * ECONOMICS.subsidyPct) / 100);
-  const pay = cost - subsidy;
-  const saved = acres * ECONOMICS.valueProtectedPerAcre;
-  const pct = Math.max(2, (pay / saved) * 100);
-  const fmt = n => '₹' + n.toLocaleString('en-IN');
+  const step = info.steps.find(s => s.tier === 'chemical' && !s.spot);
+  if (!step) return null;
+  const qty = step.perTank * step.tanksPerAcre * acres;
+  const unit = step.unit || 'g';
+  const shown = qty >= 1000 ? `${(qty / 1000).toFixed(2)} ${unit === 'ml' ? 'L' : 'kg'}` : `${Math.round(qty)} ${unit}`;
   return (
     <section className="card">
       <div className="section-h">{t('costTitle')}</div>
-      <div className="small muted">{t('valueProtected')}</div>
-      <div className="bar-row"><div className="bar" style={{ width: '78%', background: 'var(--color-accent-2-600)' }} /><b>{fmt(saved)}</b></div>
-      <div className="small muted">{t('youPay')}</div>
-      <div className="bar-row"><div className="bar" style={{ width: pct * 0.78 + '%', background: 'var(--color-accent)' }} /><b>{fmt(pay)}</b></div>
-      {ECONOMICS.illustrative && <div className="small"><span className="todo">{t('illustrative')}: src/content/ipm.js → ECONOMICS</span></div>}
+      <p className="small" style={{ margin: 0 }}>{t('costQty', { q: shown, a: acres })}</p>
+      <button className="btn-line btn-sm" style={{ marginTop: 8 }} onClick={goProgress}>{t('costSee')} →</button>
     </section>
   );
+}
+
+// Two photos of one leaf (top and underside): average the class probabilities.
+function combineViews(a, b) {
+  const p = {};
+  for (const v of [...a.all, ...b.all]) p[v.label] = (p[v.label] || 0) + v.p / 2;
+  const all = Object.entries(p).map(([label, q]) => ({ label, p: round(q, 4) })).sort((x, y) => y.p - x.p);
+  return {
+    ...a, views: 2, all, label: all[0].label, confidence: all[0].p,
+    top3: all.slice(0, 3).map(x => ({ label: x.label, p: round(x.p) })),
+    leafPct: round((a.leafPct + b.leafPct) / 2, 1)
+  };
 }
 
 function freshWalk(crop) { return { id: newId(), crop, createdAt: Date.now(), plants: [] }; }

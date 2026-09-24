@@ -309,12 +309,3 @@ export function ipmFor(label, crop) {
 export function classesFor(crop) {
   return Object.keys(IPM_BY_CROP[crop] || COTTON).filter(l => l !== 'other');
 }
-
-// ILLUSTRATIVE economics, same formulas as the design. Replace with a real
-// product price and the Wardha cotton mandi rate, and cite them.
-export const ECONOMICS = {
-  illustrative: true,
-  remedyCostPerAcre: 920,     // ₹, TODO: real product + labour cost
-  subsidyPct: 0,              // TODO: only if a scheme actually covers this input
-  valueProtectedPerAcre: 9300 // ₹, TODO: yield (q/acre) × mandi rate × loss avoided
-};
