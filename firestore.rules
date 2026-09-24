@@ -7,14 +7,64 @@ service cloud.firestore {
     function isStaff() {
       return signedIn() && request.auth.token.firebase.sign_in_provider == 'password';
     }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function decided(status) { return status in ['confirmed', 'corrected', 'lab_referred']; }
 
+    // Raw cases carry the photo, the farmer's uid and a ~1 km location, so only
+    // the farmer who made the case and staff can read them.
     match /cases/{caseId} {
-      // Prototype: any signed-in user can read cases (the farmer app shows
-      // nearby outbreaks; the officer map needs all of them).
+      allow read: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+
+      // A farmer creates their own case, undecided, with no expert verdict and
+      // no demo-data flag.
+      allow create: if isStaff() || (
+        signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status in ['auto', 'pending_review']
+        && request.resource.data.expert == null
+        && !('seed' in request.resource.data)
+      );
+
+      // A farmer can keep adding photos to their own case, but can never write
+      // the expert's verdict, and once an expert has decided, cannot change the
+      // status or label the expert set.
+      allow update: if isStaff() || (
+        signedIn()
+        && resource.data.uid == request.auth.uid
+        && !changed().hasAny(['uid', 'expert', 'seed'])
+        && (decided(resource.data.status)
+              ? !changed().hasAny(['status', 'label'])
+              : request.resource.data.status in ['auto', 'pending_review'])
+      );
+
+      allow delete: if isStaff();
+    }
+
+    // What other farmers may see: one anonymous report per case, with no uid,
+    // photo or location beyond the taluka. The "outbreaks near you" alert reads
+    // these instead of raw cases.
+    match /reports/{caseId} {
       allow read: if signedIn();
-      // A farmer creates and updates their own cases; staff can create demo data.
-      allow create: if signedIn() && (request.resource.data.uid == request.auth.uid || isStaff());
-      allow update: if (signedIn() && resource.data.uid == request.auth.uid) || isStaff();
+
+      // A farmer may only publish a report for their own case, and it must
+      // mirror that case exactly, so a report can't claim an expert
+      // confirmation the case doesn't have. getAfter() sees the case as it
+      // will be once the batch that writes both lands.
+      function caseAfter() {
+        return getAfter(/databases/$(database)/documents/cases/$(caseId)).data;
+      }
+      function mirrorsOwnCase() {
+        let c = caseAfter();
+        let r = request.resource.data;
+        return c.uid == request.auth.uid
+          && r.keys().hasOnly(['id', 'taluka', 'label', 'status', 'confidence', 'createdAt'])
+          && r.id == caseId
+          && r.taluka == c.taluka
+          && r.label == c.label
+          && r.status == c.status
+          && r.confidence == c.confidence;
+      }
+      allow create, update: if isStaff() || (signedIn() && mirrorsOwnCase());
       allow delete: if isStaff();
     }
 

@@ -49,11 +49,12 @@ export default function Scan({ farm, user, cases, goProgress }) {
       id: walk.id, uid: user.uid, district: DISTRICT, taluka: farm.taluka,
       crop: farm.crop, variety: farm.variety, acres: farm.acres, cropDay: day, stage,
       lat: +(+farm.lat).toFixed(2), lon: +(+farm.lon).toFixed(2), // ~1 km precision only
-      label: primary.label, confidence: round(primary.confidence), top3: primary.top3,
+      confidence: round(primary.confidence), top3: primary.top3,
       leafPct: round(leafSev, 1), plantsInfected: inf, plantsWalked: plants.length,
       photo: primary.photo, createdAt: walk.createdAt, updatedAt: Date.now(),
       modelVersion: model?.demo ? 'demo' : 'tm-v1',
-      ...(decided ? {} : { status: unsure ? 'pending_review' : 'auto', expert: null })
+      // After an expert decision the label and status are the expert's; don't overwrite them.
+      ...(decided ? {} : { label: primary.label, status: unsure ? 'pending_review' : 'auto', expert: null })
     });
   };
 

@@ -8,7 +8,7 @@
 // status: 'auto' | 'pending_review' | 'confirmed' | 'corrected' | 'lab_referred'
 import { firebaseEnabled, db, auth } from './firebase';
 import {
-  collection, doc, setDoc, updateDoc, onSnapshot, query, where, writeBatch, getDocs
+  collection, doc, setDoc, onSnapshot, query, where, writeBatch, getDocs
 } from 'firebase/firestore';
 import {
   onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut
@@ -82,6 +82,18 @@ function localWatch(filter, cb) {
 }
 
 // ---------- cases: public API ----------
+// Raw cases (photo, uid, location) are private to the farmer and staff. Other
+// farmers only see a "report": the anonymous fields the outbreak alert needs.
+// The day is rounded so a report can't be matched to a farmer by its timestamp.
+// firestore.rules checks that every report mirrors its case.
+const DAY_MS = 86400000;
+function reportOf(c) {
+  const r = { id: c.id };
+  for (const k of ['taluka', 'label', 'status', 'confidence']) if (c[k] !== undefined) r[k] = c[k];
+  if (c.createdAt !== undefined) r.createdAt = Math.floor(c.createdAt / DAY_MS) * DAY_MS;
+  return r;
+}
+
 // Save or update a case. Never await this in the UI: with Firestore offline the
 // promise only resolves once the server has it, but the write is already safe
 // in the local cache and will upload by itself.
@@ -93,7 +105,11 @@ export function upsertCase(c) {
     localSave(list);
     return;
   }
-  setDoc(doc(db, 'cases', c.id), c, { merge: true }).catch(e => console.warn('case sync', e));
+  // One batch, so the case and its report land together (the rules rely on it).
+  const b = writeBatch(db);
+  b.set(doc(db, 'cases', c.id), c, { merge: true });
+  b.set(doc(db, 'reports', c.id), reportOf(c), { merge: true });
+  b.commit().catch(e => console.warn('case sync', e));
 }
 
 // Farmer's own cases + how many are still waiting to upload.
@@ -107,10 +123,10 @@ export function watchMyCases(uid, cb) {
   }, e => console.warn('watchMyCases', e));
 }
 
-// Cases in one taluka (for the "outbreaks near you" alert).
+// Anonymous reports in one taluka (for the "outbreaks near you" alert).
 export function watchTaluka(taluka, cb) {
   if (!firebaseEnabled) return localWatch(c => c.taluka === taluka, cb);
-  const q = query(collection(db, 'cases'), where('taluka', '==', taluka));
+  const q = query(collection(db, 'reports'), where('taluka', '==', taluka));
   return onSnapshot(q, snap => cb(snap.docs.map(d => d.data())), e => console.warn('watchTaluka', e));
 }
 
@@ -134,25 +150,36 @@ export function decideCase(id, decision, staffEmail) {
     if (i >= 0) { list[i] = { ...list[i], ...patch }; localSave(list); }
     return Promise.resolve();
   }
-  return updateDoc(doc(db, 'cases', id), patch);
+  const b = writeBatch(db);
+  b.update(doc(db, 'cases', id), patch);
+  const report = { id, status: patch.status };
+  if (patch.label) report.label = patch.label;
+  b.set(doc(db, 'reports', id), report, { merge: true });
+  return b.commit();
 }
 
 // Write many cases at once (demo seed data). Firestore batches max 500 writes.
 export async function bulkWrite(cases) {
   if (!firebaseEnabled) { localSave([...localAll(), ...cases]); return; }
-  for (let i = 0; i < cases.length; i += 400) {
+  // Two writes per case (case + report), so 200 cases per batch.
+  for (let i = 0; i < cases.length; i += 200) {
     const b = writeBatch(db);
-    cases.slice(i, i + 400).forEach(c => b.set(doc(db, 'cases', c.id), c));
+    cases.slice(i, i + 200).forEach(c => {
+      b.set(doc(db, 'cases', c.id), c);
+      b.set(doc(db, 'reports', c.id), { ...reportOf(c), seed: true });
+    });
     await b.commit();
   }
 }
 
 export async function clearSeed() {
   if (!firebaseEnabled) { localSave(localAll().filter(c => !c.seed)); return; }
-  const snap = await getDocs(query(collection(db, 'cases'), where('seed', '==', true)));
-  for (let i = 0; i < snap.docs.length; i += 400) {
-    const b = writeBatch(db);
-    snap.docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
-    await b.commit();
+  for (const name of ['cases', 'reports']) {
+    const snap = await getDocs(query(collection(db, name), where('seed', '==', true)));
+    for (let i = 0; i < snap.docs.length; i += 400) {
+      const b = writeBatch(db);
+      snap.docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
+      await b.commit();
+    }
   }
 }

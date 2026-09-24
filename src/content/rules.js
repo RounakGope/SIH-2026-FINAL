@@ -79,9 +79,10 @@ export function countsForAlert(c) {
     (c.status === 'auto' && (c.confidence ?? 0) >= THRESHOLD);
   return conf && ipmFor(c.label).diseased;
 }
-function nearby(talukaCases, taluka, myUid) {
+// Reports carry no uid, so the farmer's own scans are left out by case id.
+function nearby(talukaCases, taluka, myCaseIds) {
   const since = Date.now() - 14 * 86400000;
-  const recent = talukaCases.filter(c => c.createdAt >= since && c.uid !== myUid && countsForAlert(c));
+  const recent = talukaCases.filter(c => c.createdAt >= since && !myCaseIds.has(c.id) && countsForAlert(c));
   const byLabel = {};
   recent.forEach(c => { byLabel[c.label] = (byLabel[c.label] || 0) + 1; });
   const top = Object.entries(byLabel).sort((a, b) => b[1] - a[1])[0];
@@ -102,11 +103,11 @@ function nearby(talukaCases, taluka, myUid) {
 }
 
 const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-export function evaluateRisks(farm, weather, talukaCases, myUid) {
+export function evaluateRisks(farm, weather, talukaCases, myCaseIds = new Set()) {
   const out = [];
   if (farm.crop === 'Cotton') out.push(pinkBollworm(farm));
   out.push(leafSpot(weather));
-  out.push(nearby(talukaCases || [], farm.taluka, myUid));
+  out.push(nearby(talukaCases || [], farm.taluka, myCaseIds));
   return out.sort((a, b) => ORDER[a.level] - ORDER[b.level]);
 }
 export { PBW_ETL };

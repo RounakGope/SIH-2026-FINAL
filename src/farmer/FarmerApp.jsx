@@ -34,7 +34,7 @@ export default function FarmerApp() {
 
   const screen = !farm || tab === 'setup'
     ? <Setup farm={farm} onSave={f => { updateFarm(f); setTab('home'); }} />
-    : tab === 'home' ? <Home farm={farm} user={user} onFarm={updateFarm} goScan={() => setTab('scan')} />
+    : tab === 'home' ? <Home farm={farm} myCases={cases} onFarm={updateFarm} goScan={() => setTab('scan')} />
     : tab === 'scan' ? <Scan farm={farm} user={user} cases={cases} goProgress={() => setTab('progress')} />
     : <Progress farm={farm} cases={cases} />;
 

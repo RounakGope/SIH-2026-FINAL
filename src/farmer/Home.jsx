@@ -5,7 +5,7 @@ import { getWeather } from '../lib/weather';
 import { watchTaluka } from '../lib/store';
 import { Alert } from './Icons';
 
-export default function Home({ farm, user, onFarm, goScan }) {
+export default function Home({ farm, myCases, onFarm, goScan }) {
   const { t, pick, lang } = useLang();
   const [weather, setWeather] = useState(null);
   const [talukaCases, setTalukaCases] = useState([]);
@@ -14,7 +14,7 @@ export default function Home({ farm, user, onFarm, goScan }) {
   useEffect(() => { getWeather(farm.lat, farm.lon).then(setWeather); }, [farm.lat, farm.lon]);
   useEffect(() => watchTaluka(farm.taluka, setTalukaCases), [farm.taluka]);
 
-  const risks = evaluateRisks(farm, weather, talukaCases, user?.uid);
+  const risks = evaluateRisks(farm, weather, talukaCases, new Set(myCases.map(c => c.id)));
   const [top, ...rest] = risks;
   const pbw = risks.find(r => r.id === 'pbw');
 
