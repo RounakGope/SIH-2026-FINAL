@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useLang } from '../lib/i18n';
+import { useLang, LANGS } from '../lib/i18n';
 import { initFarmer, getFarm, saveFarm, watchMyCases, mode } from '../lib/store';
 import { loadModel } from '../lib/model';
-import { CROPS } from '../content/rules';
+import { CROPS, cropName } from '../content/rules';
+import { talukaName } from '../content/talukas';
 import { Leaf, Home as HomeIcon, Camera, Chart, Sprout } from './Icons';
 import Setup from './Setup';
 import Home from './Home';
@@ -49,12 +50,13 @@ export default function FarmerApp() {
         <div className="logo"><Leaf /></div>
         <div className="brand">
           <div className="brand-name">{t('appName')}</div>
-          <div className="brand-sub">{farm ? `${farm.taluka} · ${farm.crop}` : 'Wardha'}</div>
+          <div className="brand-sub">{farm ? `${talukaName(farm.taluka, lang)} · ${cropName(farm.crop, lang)}` : talukaName('Wardha', lang)}</div>
         </div>
         {pill}
         <div className="lang-toggle">
-          <button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button>
-          <button className={lang === 'mr' ? 'on' : ''} onClick={() => setLang('mr')}>मरा</button>
+          {LANGS.map(([code, label]) => (
+            <button key={code} className={lang === code ? 'on' : ''} onClick={() => setLang(code)} lang={code}>{label}</button>
+          ))}
         </div>
       </header>
       {screen}

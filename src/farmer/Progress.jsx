@@ -52,9 +52,9 @@ export default function Progress({ farm, cases }) {
 
       <div className="saved-card">
         <div className="small" style={{ opacity: .85, letterSpacing: '.08em', textTransform: 'uppercase' }}>
-          {lang === 'mr' ? 'फरक, बाजारभावाने' : 'The gap, priced at the mandi rate'}</div>
+          {t('gapTitle')}</div>
         <b>₹{kept.toLocaleString('en-IN')}</b>
-        <div className="small">{lang === 'mr' ? `${farm.acres} एकरवर वाचवलेले उत्पन्न` : `of yield kept on ${farm.acres} acres`} · {t('illustrative')}</div>
+        <div className="small">{t('yieldKept', { a: farm.acres })} · {t('illustrative')}</div>
       </div>
 
       <section className="card">
@@ -67,7 +67,7 @@ export default function Progress({ farm, cases }) {
                 <div style={{ flex: 1 }}>
                   <b>{pick(ipmFor(c.label, c.crop).name)}</b> · {t('severityIndex').toLowerCase()} {fieldIndex(c)}
                   <div className="small muted">
-                    {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {c.plantsInfected}/{c.plantsWalked} · {statusText(c, lang)}
+                    {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {c.plantsInfected}/{c.plantsWalked} · {statusText(c, t)}
                   </div>
                 </div>
               </div>
@@ -79,13 +79,9 @@ export default function Progress({ farm, cases }) {
   );
 }
 
-function statusText(c, lang) {
-  const m = {
-    auto: ['on-device', 'फोनवर'], pending_review: ['waiting for expert', 'तज्ञांकडे'],
-    confirmed: ['expert-confirmed', 'तज्ञांनी खात्री केली'], corrected: ['expert-corrected', 'तज्ञांनी दुरुस्त केले'],
-    lab_referred: ['lab sample asked', 'प्रयोगशाळा नमुना']
-  }[c.status] || ['', ''];
-  return lang === 'mr' ? m[1] : m[0];
+function statusText(c, t) {
+  const key = { auto: 'stOnDevice', pending_review: 'stPending', confirmed: 'stConfirmed', corrected: 'stCorrected', lab_referred: 'stLab' }[c.status];
+  return key ? t(key) : '';
 }
 
 function Chart({ observed, projected, labels }) {

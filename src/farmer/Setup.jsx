@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLang } from '../lib/i18n';
-import { CROPS, cropDay, stageFor, STAGE_MR } from '../content/rules';
+import { CROPS, cropDay, stageFor, stageName, cropName } from '../content/rules';
 import { TALUKAS, DEFAULT_LOCATION, nearestTaluka } from '../content/talukas';
 import { Pin } from './Icons';
 
@@ -43,7 +43,7 @@ export default function Setup({ farm, onSave }) {
           {Object.entries(CROPS).map(([name, c]) => (
             <button key={name} className={'choice' + (f.crop === name ? ' on' : '')}
               onClick={() => set({ crop: name, variety: c.variety })}>
-              <span>{c.icon}</span>{lang === 'mr' ? c.mr : name}
+              <span>{c.icon}</span>{cropName(name, lang)}
             </button>
           ))}
         </div>
@@ -59,7 +59,7 @@ export default function Setup({ farm, onSave }) {
         <input className="input" type="date" value={f.sowDate} onChange={e => set({ sowDate: e.target.value })} />
       </div>
       {day && (
-        <div className="info-strip">⏱ {t('day')} {day} · {lang === 'mr' ? STAGE_MR[stage] : stage}</div>
+        <div className="info-strip">⏱ {t('day')} {day} · {stageName(stage, lang)}</div>
       )}
 
       <div>
@@ -78,7 +78,7 @@ export default function Setup({ farm, onSave }) {
             const tk = TALUKAS.find(x => x.name === e.target.value);
             set({ taluka: tk.name, lat: tk.lat, lon: tk.lon });
           }}>
-            {TALUKAS.map(tk => <option key={tk.name} value={tk.name}>{lang === 'mr' ? tk.mr : tk.name}</option>)}
+            {TALUKAS.map(tk => <option key={tk.name} value={tk.name}>{tk[lang] || tk.name}</option>)}
           </select>
           <button className="btn-line" onClick={gps} style={{ flex: 'none' }}><Pin />{t('useGps')}</button>
         </div>

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useLang } from '../lib/i18n';
-import { evaluateRisks, cropDay, PBW_ETL, CROPS } from '../content/rules';
+import { useLang, LOCALE } from '../lib/i18n';
+import { evaluateRisks, cropDay, PBW_ETL, cropName } from '../content/rules';
 import { getWeather } from '../lib/weather';
 import { watchTaluka } from '../lib/store';
 import { Alert } from './Icons';
+import Speak from './Speak';
 
 export default function Home({ farm, myCases, onFarm, goScan }) {
   const { t, pick, lang } = useLang();
@@ -33,14 +34,14 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
     <main className="content">
       <div className="row between">
         <h2 className="h-title">{t('riskTitle')}</h2>
-        <span className="pill pill-neutral">{lang === 'mr' ? CROPS[farm.crop]?.mr : farm.crop} · {t('day')} {cropDay(farm.sowDate)}</span>
+        <span className="pill pill-neutral">{cropName(farm.crop, lang)} · {t('day')} {cropDay(farm.sowDate)}</span>
       </div>
 
       {top && (
         <section className={'risk-hero ' + top.level}>
           <div className="row between">
             <div className="lvl"><Alert />{t(top.level)}</div>
-            {top.level === 'HIGH' && <span className="pill" style={{ background: 'rgba(255,255,255,.18)', color: '#fff' }}>{lang === 'mr' ? 'आजच करा' : 'Act today'}</span>}
+            {top.level === 'HIGH' && <span className="pill" style={{ background: 'rgba(255,255,255,.18)', color: '#fff' }}>{t('actToday')}</span>}
           </div>
           <div className="pest">{pick(top.pest)}</div>
           <hr />
@@ -50,6 +51,7 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
             <div className="sub" style={{ marginTop: 0 }}>{t('doThis')}</div>
             <div style={{ fontSize: 15, marginTop: 4 }}>{pick(top.action)}</div>
           </div>
+          <div style={{ marginTop: 10 }}><Speak light text={[pick(top.pest), t(top.level), pick(top.trigger), pick(top.action)].join('. ')} /></div>
         </section>
       )}
 
@@ -66,7 +68,7 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
             <button className="btn-line btn-sage" disabled={count === ''}
               onClick={() => { addTrap(Math.max(0, parseInt(count, 10) || 0)); setCount(''); }}>{t('addCount')}</button>
             <button className="btn-line btn-sm" onClick={fillExample} title="Fills 7 nights of example counts">
-              {lang === 'mr' ? 'उदाहरण' : 'Demo data'}</button>
+              {t('demoData')}</button>
           </div>
         </section>
       )}
@@ -93,7 +95,7 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, textAlign: 'center', fontSize: 12 }}>
             {weather.days.map(d => (
               <div key={d.date}>
-                <div className="muted">{new Date(d.date).toLocaleDateString(lang === 'mr' ? 'mr-IN' : 'en-IN', { weekday: 'short' })}</div>
+                <div className="muted">{new Date(d.date).toLocaleDateString(LOCALE[lang], { weekday: 'short' })}</div>
                 <div style={{ fontWeight: 700 }}>{Math.round(d.tMax)}°</div>
                 <div>💧{d.rhMean}%</div>
                 <div className="muted">{d.rain.toFixed(1)} mm</div>

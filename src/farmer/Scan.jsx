@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../lib/i18n';
-import { loadModel, classify, modelInput } from '../lib/model';
+import { loadModel, classify, modelInput, explain } from '../lib/model';
 import { loadImage, lesionMask, smallJpeg } from '../lib/image';
 import { upsertCase, newId } from '../lib/store';
 import { ipmFor, classesFor, THRESHOLD, TIER_LABEL, ECONOMICS, CHEM_UNLOCK_INDEX } from '../content/ipm';
-import { CROPS, cropDay, stageFor, STAGE_MR } from '../content/rules';
+import { CROPS, cropDay, stageFor, stageName, cropName } from '../content/rules';
 import { DISTRICT } from '../content/talukas';
+import Speak from './Speak';
 
 const WALK_KEY = 'fr_walk';
 const PLANTS = 10;
@@ -26,7 +27,7 @@ export default function Scan({ farm, user, cases, goProgress }) {
 
   if (!CROPS[farm.crop]?.model) {
     return <main className="content"><h2 className="h-title">{t('diagTitle')}</h2>
-      <div className="card-warm">{t('cropNoModel', { c: lang === 'mr' ? CROPS[farm.crop].mr : farm.crop })}</div></main>;
+      <div className="card-warm">{t('cropNoModel', { c: cropName(farm.crop, lang) })}</div></main>;
   }
 
   const day = cropDay(farm.sowDate);
@@ -72,11 +73,13 @@ export default function Scan({ farm, user, cases, goProgress }) {
       const sev = lesionMask(img);
       // The demo predictor (no model files) only knows 'healthy' and one disease.
       const demoLabels = ['healthy', classesFor(crop).find(l => ipmFor(l, crop).diseased)];
-      const top = await classify(model, modelInput(img, model.size), sev, demoLabels);
+      const input = modelInput(img, model.size);
+      const top = await classify(model, input, sev, demoLabels);
       const plant = {
         kind: 'photo', label: top[0].label, confidence: top[0].p,
         top3: top.slice(0, 3).map(x => ({ label: x.label, p: round(x.p) })),
-        leafPct: sev.pct, mask: sev.maskUrl, photo: smallJpeg(img)
+        leafPct: sev.pct, mask: sev.maskUrl, photo: smallJpeg(img),
+        cam: explain(model, input, img, top[0].label) // where the model looked
       };
       await new Promise(r => setTimeout(r, 600)); // let the scan animation read as "analysing"
       const plants = [...walk.plants, plant].slice(-PLANTS);
@@ -139,12 +142,15 @@ function Result({ plant, farm, crop, day, stage, infected, walked, savedCase, go
   return (
     <>
       <section className="card">
-        <div className="section-h">{t('mostLikely')}</div>
+        <div className="row between">
+          <div className="section-h">{t('mostLikely')}</div>
+          <Speak text={[pick(info.name), pick(info.markers), unsure ? t('unsureBody', { t: Math.round(THRESHOLD * 100) }) : info.steps.filter(s => s.tier !== 'chemical').map(s => pick(s.text)).join(' ')].join('. ')} />
+        </div>
         <h3 style={{ fontSize: 21, fontFamily: 'var(--font-heading)', fontWeight: 400 }}>{pick(info.name)}</h3>
         <div className="stats" style={{ marginTop: 10 }}>
           <div className="stat"><b>{plant.leafPct}%</b><span>{t('severity')}</span></div>
           <div className="stat"><b>{infected}/{walked}</b><span>{t('plantsInfected')}</span></div>
-          <div className="stat"><b>{t('day')} {day}</b><span>{lang === 'mr' ? STAGE_MR[stage] : stage}</span></div>
+          <div className="stat"><b>{t('day')} {day}</b><span>{stageName(stage, lang)}</span></div>
         </div>
         <div style={{ marginTop: 12 }}>
           <div className="row between"><b>{t('confidence')}</b><b>{pct}%</b></div>
@@ -155,6 +161,12 @@ function Result({ plant, farm, crop, day, stage, infected, walked, savedCase, go
           <div className="small muted">{t('prescribeAbove', { t: Math.round(THRESHOLD * 100) })}</div>
         </div>
         <p className="small" style={{ marginTop: 10, marginBottom: 6 }}>{pick(info.markers)}</p>
+        {plant.cam && (
+          <figure style={{ margin: '10px 0 8px' }}>
+            <img src={plant.cam} alt={t('camAlt')} style={{ width: '100%', borderRadius: 14, display: 'block' }} />
+            <figcaption className="small muted" style={{ marginTop: 6 }}>{t('camCaption')}</figcaption>
+          </figure>
+        )}
         <div className="top3">
           {plant.top3.map(x => <div key={x.label}><span>{pick(ipmFor(x.label, crop).name)}</span><span className="muted">{Math.round(x.p * 100)}%</span></div>)}
         </div>
@@ -222,7 +234,7 @@ function Ladder({ info, chemOpen, acres }) {
                 <b>{pick(TIER_LABEL[s.tier])}</b>
                 {chem
                   ? (locked ? t('lockedChem') : <Txt s={s.product} />)
-                  : <Txt s={lang === 'mr' && s.text.mr && s.text.mr !== 'TODO' ? s.text.mr : s.text.en} />}
+                  : <Txt s={pick(s.text)} />}
               </div>
             </div>
           );
