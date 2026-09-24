@@ -89,7 +89,7 @@ function localWatch(filter, cb) {
 const DAY_MS = 86400000;
 function reportOf(c) {
   const r = { id: c.id };
-  for (const k of ['taluka', 'label', 'status', 'confidence']) if (c[k] !== undefined) r[k] = c[k];
+  for (const k of ['taluka', 'crop', 'label', 'status', 'confidence']) if (c[k] !== undefined) r[k] = c[k];
   if (c.createdAt !== undefined) r.createdAt = Math.floor(c.createdAt / DAY_MS) * DAY_MS;
   return r;
 }

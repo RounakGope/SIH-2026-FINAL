@@ -13,7 +13,7 @@ export default function Setup({ farm, onSave }) {
   const [gpsMsg, setGpsMsg] = useState('');
   const set = patch => setF(prev => ({ ...prev, ...patch }));
   const day = cropDay(f.sowDate);
-  const stage = stageFor(day);
+  const stage = stageFor(day, f.crop);
 
   const gps = () => {
     if (!navigator.geolocation) return setGpsMsg('GPS not available');
@@ -86,7 +86,41 @@ export default function Setup({ farm, onSave }) {
       </div>
 
       <button className="btn-big" onClick={() => onSave({ ...f, traps: f.traps || [] })}>{t('saveField')}</button>
+
+      <Credits />
     </main>
+  );
+}
+
+// The disease models are trained on public datasets; the CC BY 4.0 ones require
+// this credit in the app. Full terms: public/model/ATTRIBUTION.md.
+const DATASETS = [
+  ['Cotton', 'SAR-CLD-2024: A Comprehensive Dataset for Cotton Leaf Disease Detection', 'Bishshash, Nirob, Shikder & Sarower, Daffodil International University', 'CC BY 4.0', 'https://doi.org/10.17632/b3jy2p6k8w.2'],
+  ['Cotton', 'Cotton Leaf Disease Dataset', 'Serosh Karim et al., Kaggle', 'licence not stated', 'https://www.kaggle.com/datasets/seroshkarim/cotton-leaf-disease-dataset'],
+  ['Soybean', 'Multi-Class Soybean Leaf Disease Dataset', 'Thorwat, Magdum, Jadhav, Sutar & Oswal', 'CC BY 4.0', 'https://doi.org/10.17632/6fhphxg297.2'],
+  ['Sugarcane', 'Sugarcane Leaf Disease Dataset', 'Daphal & Koli, Savitribai Phule Pune University', 'CC BY 4.0', 'https://doi.org/10.17632/9424skmnrk.1'],
+  ['Chickpea', 'Fusarium Wilt Disease in Chickpea Dataset', 'Tolga Hayit et al., Kaggle', 'licence not stated', 'https://www.kaggle.com/datasets/tolgahayit/fusarium-wilt-disease-in-chickpea-dataset']
+];
+
+function Credits() {
+  const { t } = useLang();
+  return (
+    <details className="card-light small">
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{t('credits')}</summary>
+      <p style={{ marginTop: 10 }}>
+        Leaf disease models trained by the FasalRakshak ML team on these public datasets.
+        Backbone: MobileNetV2 (ImageNet weights, Apache 2.0), run on the phone with TensorFlow.js.
+      </p>
+      <ul style={{ paddingLeft: 18, margin: 0, display: 'grid', gap: 6 }}>
+        {DATASETS.map(([crop, title, who, licence, url]) => (
+          <li key={url}><b>{crop}</b>: <a href={url} target="_blank" rel="noreferrer">{title}</a>, {who}. {licence}.</li>
+        ))}
+      </ul>
+      <p className="muted" style={{ marginBottom: 0 }}>
+        Treatment advice: ICAR-CICR Nagpur cotton advisory 2024-25 and TNAU Agritech Portal.
+        Weather: Open-Meteo. Map: © OpenStreetMap contributors.
+      </p>
+    </details>
   );
 }
 

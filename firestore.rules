@@ -41,7 +41,8 @@ service cloud.firestore {
     }
 
     // What other farmers may see: one anonymous report per case, with no uid,
-    // photo or location beyond the taluka. The "outbreaks near you" alert reads
+    // photo or location beyond the taluka (crop is included so a farmer is only
+    // warned about outbreaks on their own crop). The "outbreaks near you" alert reads
     // these instead of raw cases.
     match /reports/{caseId} {
       allow read: if signedIn();
@@ -57,9 +58,10 @@ service cloud.firestore {
         let c = caseAfter();
         let r = request.resource.data;
         return c.uid == request.auth.uid
-          && r.keys().hasOnly(['id', 'taluka', 'label', 'status', 'confidence', 'createdAt'])
+          && r.keys().hasOnly(['id', 'taluka', 'crop', 'label', 'status', 'confidence', 'createdAt'])
           && r.id == caseId
           && r.taluka == c.taluka
+          && r.crop == c.crop
           && r.label == c.label
           && r.status == c.status
           && r.confidence == c.confidence;

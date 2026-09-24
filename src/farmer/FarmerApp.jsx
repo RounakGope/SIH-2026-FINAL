@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useLang } from '../lib/i18n';
 import { initFarmer, getFarm, saveFarm, watchMyCases, mode } from '../lib/store';
+import { loadModel } from '../lib/model';
+import { CROPS } from '../content/rules';
 import { Leaf, Home as HomeIcon, Camera, Chart, Sprout } from './Icons';
 import Setup from './Setup';
 import Home from './Home';
@@ -17,6 +19,9 @@ export default function FarmerApp() {
   const online = useOnline();
 
   useEffect(() => initFarmer(setUser), []);
+  // Load the farmer's crop model as soon as the app opens: the first scan is then
+  // instant, and the service worker caches the files for use offline.
+  useEffect(() => { if (farm?.crop && CROPS[farm.crop]?.model) loadModel(farm.crop); }, [farm?.crop]);
   useEffect(() => {
     if (!user) return;
     return watchMyCases(user.uid, (list, pend) => {

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../lib/i18n';
-import { loadModel, classify } from '../lib/model';
-import { loadImage, lesionMask, squareCanvas, smallJpeg } from '../lib/image';
+import { loadModel, classify, modelInput } from '../lib/model';
+import { loadImage, lesionMask, smallJpeg } from '../lib/image';
 import { upsertCase, newId } from '../lib/store';
-import { IPM, ipmFor, THRESHOLD, TIER_LABEL, ECONOMICS, CHEM_UNLOCK_INDEX } from '../content/ipm';
+import { ipmFor, classesFor, THRESHOLD, TIER_LABEL, ECONOMICS, CHEM_UNLOCK_INDEX } from '../content/ipm';
 import { CROPS, cropDay, stageFor, STAGE_MR } from '../content/rules';
 import { DISTRICT } from '../content/talukas';
 
@@ -13,12 +13,15 @@ const PLANTS = 10;
 export default function Scan({ farm, user, cases, goProgress }) {
   const { t, pick, lang } = useLang();
   const [model, setModel] = useState(null);
-  const [walk, setWalk] = useState(() => readWalk() || freshWalk());
+  const [walk, setWalk] = useState(() => {
+    const w = readWalk();
+    return w && (w.crop || 'Cotton') === farm.crop ? w : freshWalk(farm.crop);
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const fileRef = useRef(null);
 
-  useEffect(() => { loadModel().then(setModel); }, []);
+  useEffect(() => { setModel(null); loadModel(farm.crop).then(setModel); }, [farm.crop]);
   useEffect(() => { try { localStorage.setItem(WALK_KEY, JSON.stringify(walk)); } catch {} }, [walk]);
 
   if (!CROPS[farm.crop]?.model) {
@@ -27,20 +30,21 @@ export default function Scan({ farm, user, cases, goProgress }) {
   }
 
   const day = cropDay(farm.sowDate);
-  const stage = stageFor(day);
+  const crop = farm.crop;
+  const stage = stageFor(day, crop);
   const photos = walk.plants.filter(p => p.kind === 'photo');
   const latest = photos[photos.length - 1];
   const walked = walk.plants.length;
-  const infected = walk.plants.filter(p => p.kind === 'photo' && ipmFor(p.label).diseased && p.confidence >= THRESHOLD).length;
+  const infected = walk.plants.filter(p => p.kind === 'photo' && ipmFor(p.label, crop).diseased && p.confidence >= THRESHOLD).length;
   const savedCase = cases.find(c => c.id === walk.id);
 
   const saveWalk = (plants) => {
     const shots = plants.filter(p => p.kind === 'photo');
     if (!shots.length || !user) return;
     // The case's headline result = the most confident diseased photo, else the latest photo.
-    const diseased = shots.filter(p => ipmFor(p.label).diseased).sort((a, b) => b.confidence - a.confidence);
+    const diseased = shots.filter(p => ipmFor(p.label, crop).diseased).sort((a, b) => b.confidence - a.confidence);
     const primary = diseased[0] || shots[shots.length - 1];
-    const inf = plants.filter(p => p.kind === 'photo' && ipmFor(p.label).diseased && p.confidence >= THRESHOLD).length;
+    const inf = plants.filter(p => p.kind === 'photo' && ipmFor(p.label, crop).diseased && p.confidence >= THRESHOLD).length;
     const leafSev = diseased.length ? diseased.reduce((s, p) => s + p.leafPct, 0) / diseased.length : 0;
     const unsure = shots.some(p => p.confidence < THRESHOLD || p.label === 'other');
     const existing = cases.find(c => c.id === walk.id);
@@ -66,7 +70,9 @@ export default function Scan({ farm, user, cases, goProgress }) {
     try {
       const img = await loadImage(file);
       const sev = lesionMask(img);
-      const top = await classify(model, squareCanvas(img, model.size), sev);
+      // The demo predictor (no model files) only knows 'healthy' and one disease.
+      const demoLabels = ['healthy', classesFor(crop).find(l => ipmFor(l, crop).diseased)];
+      const top = await classify(model, modelInput(img, model.size), sev, demoLabels);
       const plant = {
         kind: 'photo', label: top[0].label, confidence: top[0].p,
         top3: top.slice(0, 3).map(x => ({ label: x.label, p: round(x.p) })),
@@ -109,21 +115,21 @@ export default function Scan({ farm, user, cases, goProgress }) {
       <div className="row">
         <button className="btn-line" style={{ flex: 1 }} disabled={busy || walked >= PLANTS} onClick={healthyTap}>✓ {t('looksHealthy')}</button>
         <button className="btn-line" style={{ flex: 1 }} disabled={busy || walked === 0}
-          onClick={() => setWalk(freshWalk())}>↺ {t('newWalk')}</button>
+          onClick={() => setWalk(freshWalk(crop))}>↺ {t('newWalk')}</button>
       </div>
       {err && <div className="banner">{err}</div>}
 
       {latest && !busy && (
-        <Result plant={latest} farm={farm} day={day} stage={stage} infected={infected} walked={walked}
+        <Result plant={latest} farm={farm} crop={crop} day={day} stage={stage} infected={infected} walked={walked}
           savedCase={savedCase} goProgress={goProgress} />
       )}
     </main>
   );
 }
 
-function Result({ plant, farm, day, stage, infected, walked, savedCase, goProgress }) {
+function Result({ plant, farm, crop, day, stage, infected, walked, savedCase, goProgress }) {
   const { t, pick, lang } = useLang();
-  const info = ipmFor(plant.label);
+  const info = ipmFor(plant.label, crop);
   const unsure = plant.confidence < THRESHOLD || plant.label === 'other';
   const pct = Math.round(plant.confidence * 100);
   const fieldIndex = walked ? (infected / walked) * 100 * (plant.leafPct / 100) : 0;
@@ -150,7 +156,7 @@ function Result({ plant, farm, day, stage, infected, walked, savedCase, goProgre
         </div>
         <p className="small" style={{ marginTop: 10, marginBottom: 6 }}>{pick(info.markers)}</p>
         <div className="top3">
-          {plant.top3.map(x => <div key={x.label}><span>{pick(ipmFor(x.label).name)}</span><span className="muted">{Math.round(x.p * 100)}%</span></div>)}
+          {plant.top3.map(x => <div key={x.label}><span>{pick(ipmFor(x.label, crop).name)}</span><span className="muted">{Math.round(x.p * 100)}%</span></div>)}
         </div>
       </section>
 
@@ -184,7 +190,7 @@ function ExpertNote({ c }) {
   const { t, pick } = useLang();
   const e = c.expert;
   const verb = c.status === 'confirmed' ? t('expertConfirmed')
-    : c.status === 'corrected' ? `${t('expertCorrected')} ${pick(ipmFor(e.label || c.label).name)}`
+    : c.status === 'corrected' ? `${t('expertCorrected')} ${pick(ipmFor(e.label || c.label, c.crop).name)}`
     : t('expertLab');
   return (
     <section className="card-sage">
@@ -204,6 +210,7 @@ function Ladder({ info, chemOpen, acres }) {
   return (
     <section className="card">
       <div className="section-h">{t('ipmTitle')}</div>
+      {info.etl && <p className="small muted" style={{ marginTop: 0 }}>{pick(info.etl)}</p>}
       <div className="ladder">
         {info.steps.map((s, i) => {
           const chem = s.tier === 'chemical';
@@ -225,8 +232,15 @@ function Ladder({ info, chemOpen, acres }) {
         <div key={i} style={{ marginTop: 12 }}>
           <div className="section-h">{t('safeUse', { a: acres })}</div>
           <div className="safe-grid">
-            <div className="stat"><b>{acres * s.tanksPerAcre}</b><span>{t('tanks', { l: s.tankL })}</span></div>
-            <div className="stat"><b>{s.gPerTank ?? <span className="todo">TODO</span>}{s.gPerTank != null && ' g'}</b><span>{t('perTank')}</span></div>
+            {s.spot ? (
+              // Spot treatment (a drench where plants were removed): dosed per litre, not per acre.
+              <div className="stat"><b>{s.perLitre}</b><span>{t('perLitreSpot')}</span></div>
+            ) : (
+              <>
+                <div className="stat"><b>{acres * s.tanksPerAcre}</b><span>{t('tanks', { l: s.tankL })}</span></div>
+                <div className="stat"><b>{s.perTank ?? <span className="todo">TODO</span>}{s.perTank != null && ' ' + (s.unit || 'g')}</b><span>{t('perTank')}</span></div>
+              </>
+            )}
             {/* The pre-harvest interval is printed on the pack and differs between
                 manufacturers of the same active ingredient, so when we don't hold a
                 verified figure we send the farmer to the label rather than guess. */}
@@ -260,6 +274,6 @@ function Cost({ acres }) {
   );
 }
 
-function freshWalk() { return { id: newId(), createdAt: Date.now(), plants: [] }; }
+function freshWalk(crop) { return { id: newId(), crop, createdAt: Date.now(), plants: [] }; }
 function readWalk() { try { return JSON.parse(localStorage.getItem(WALK_KEY)); } catch { return null; } }
 function round(x, d = 3) { const f = 10 ** d; return Math.round(x * f) / f; }

@@ -65,7 +65,7 @@ export default function Progress({ farm, cases }) {
               <div className="hist-item" key={c.id}>
                 {c.photo ? <img src={c.photo} alt="" /> : <div className="ph" />}
                 <div style={{ flex: 1 }}>
-                  <b>{pick(ipmFor(c.label).name)}</b> · {t('severityIndex').toLowerCase()} {fieldIndex(c)}
+                  <b>{pick(ipmFor(c.label, c.crop).name)}</b> · {t('severityIndex').toLowerCase()} {fieldIndex(c)}
                   <div className="small muted">
                     {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {c.plantsInfected}/{c.plantsWalked} · {statusText(c, lang)}
                   </div>

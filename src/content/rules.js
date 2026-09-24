@@ -2,9 +2,12 @@
 // CONTENT TEAM: check every threshold against its source before the demo.
 import { ipmFor, THRESHOLD } from './ipm';
 
+// `model: true` = public/model/<crop lowercased>/ holds a trained model.
 export const CROPS = {
   Cotton: { mr: 'कापूस', icon: '🌱', variety: 'Bt hybrid (BG-II)', model: true },
-  Soybean: { mr: 'सोयाबीन', icon: '🌿', variety: 'JS-335', model: false },
+  Soybean: { mr: 'सोयाबीन', icon: '🌿', variety: 'JS-335', model: true },
+  Chickpea: { mr: 'हरभरा', icon: '☘️', variety: 'JAKI 9218', model: true },
+  Sugarcane: { mr: 'ऊस', icon: '🎋', variety: 'Co 86032', model: true },
   Tur: { mr: 'तूर', icon: '🫘', variety: 'BDN-711', model: false },
   Grape: { mr: 'द्राक्ष', icon: '🍇', variety: 'Thompson Seedless', model: false }
 };
@@ -14,13 +17,24 @@ export function cropDay(sowDate, today = new Date()) {
   return Math.max(1, Math.round((today - new Date(sowDate)) / 86400000));
 }
 
-// Stage names as used in the design (cotton).
-export function stageFor(day) {
+// Growth stage from days after sowing: [last day of the stage, name], per crop.
+// Approximate; the variety shifts these by a week or two.
+const STAGES = {
+  Cotton: [[29, 'Seedling'], [59, 'Squaring'], [95, 'Boll formation'], [Infinity, 'Boll maturation']],
+  Soybean: [[34, 'Vegetative'], [49, 'Flowering'], [79, 'Pod development'], [Infinity, 'Maturity']],
+  Chickpea: [[39, 'Vegetative'], [59, 'Flowering'], [89, 'Pod development'], [Infinity, 'Maturity']],
+  Sugarcane: [[44, 'Germination'], [119, 'Tillering'], [269, 'Grand growth'], [Infinity, 'Maturity']],
+  Tur: [[59, 'Vegetative'], [119, 'Flowering'], [159, 'Pod development'], [Infinity, 'Maturity']],
+  Grape: [[Infinity, 'Growing']]
+};
+export function stageFor(day, crop = 'Cotton') {
   if (day == null) return '';
-  return day < 30 ? 'Seedling' : day < 60 ? 'Squaring' : day < 96 ? 'Boll formation' : 'Boll maturation';
+  return (STAGES[crop] || STAGES.Cotton).find(([last]) => day <= last)[1];
 }
 export const STAGE_MR = {
-  Seedling: 'रोप अवस्था', Squaring: 'पाते अवस्था', 'Boll formation': 'बोंड धारणा', 'Boll maturation': 'बोंड परिपक्वता'
+  Seedling: 'रोप अवस्था', Squaring: 'पाते अवस्था', 'Boll formation': 'बोंड धारणा', 'Boll maturation': 'बोंड परिपक्वता',
+  Vegetative: 'शाखीय वाढ', Flowering: 'फुलोरा', 'Pod development': 'शेंगा धारणा', Maturity: 'परिपक्वता',
+  Germination: 'उगवण', Tillering: 'फुटवे', 'Grand growth': 'जोमदार वाढ', Growing: 'वाढ'
 };
 
 // Pink bollworm: ETL = 8 moths per trap per night for 3 consecutive nights
@@ -77,18 +91,21 @@ function leafSpot(weather) {
 export function countsForAlert(c) {
   const conf = c.status === 'confirmed' || c.status === 'corrected' ||
     (c.status === 'auto' && (c.confidence ?? 0) >= THRESHOLD);
-  return conf && ipmFor(c.label).diseased;
+  return conf && ipmFor(c.label, c.crop).diseased;
 }
 // Reports carry no uid, so the farmer's own scans are left out by case id.
-function nearby(talukaCases, taluka, myCaseIds) {
+// Only outbreaks on the farmer's own crop count (older cases have no crop: cotton).
+function nearby(talukaCases, farm, myCaseIds) {
+  const taluka = farm.taluka;
   const since = Date.now() - 14 * 86400000;
-  const recent = talukaCases.filter(c => c.createdAt >= since && !myCaseIds.has(c.id) && countsForAlert(c));
+  const recent = talukaCases.filter(c => c.createdAt >= since && !myCaseIds.has(c.id) &&
+    (c.crop || 'Cotton') === farm.crop && countsForAlert(c));
   const byLabel = {};
   recent.forEach(c => { byLabel[c.label] = (byLabel[c.label] || 0) + 1; });
   const top = Object.entries(byLabel).sort((a, b) => b[1] - a[1])[0];
   const n = top ? top[1] : 0;
   const level = n >= 15 ? 'HIGH' : n >= 6 ? 'MEDIUM' : 'LOW';
-  const name = top ? ipmFor(top[0]).name : { en: 'No outbreaks', mr: 'प्रादुर्भाव नाही' };
+  const name = top ? ipmFor(top[0], farm.crop).name : { en: 'No outbreaks', mr: 'प्रादुर्भाव नाही' };
   return {
     id: 'nearby',
     pest: top ? name : { en: 'Outbreaks near you', mr: 'जवळपास प्रादुर्भाव' },
@@ -107,7 +124,7 @@ export function evaluateRisks(farm, weather, talukaCases, myCaseIds = new Set())
   const out = [];
   if (farm.crop === 'Cotton') out.push(pinkBollworm(farm));
   out.push(leafSpot(weather));
-  out.push(nearby(talukaCases || [], farm.taluka, myCaseIds));
+  out.push(nearby(talukaCases || [], farm, myCaseIds));
   return out.sort((a, b) => ORDER[a.level] - ORDER[b.level]);
 }
 export { PBW_ETL };

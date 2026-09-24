@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/*.png', 'model/*'],
+      includeAssets: ['icons/*.png'],
       manifest: {
         name: 'FasalRakshak',
         short_name: 'FasalRakshak',
@@ -23,12 +23,23 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Everything the offline path needs, including the model's weights.bin.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,json,bin}'],
+        // The app shell is precached. The crop models (~9 MB each, 4 crops) are NOT:
+        // installing all of them would cost a farmer ~38 MB. Each farmer's own crop
+        // model is cached at runtime instead (see the 'models' rule below), and the
+        // app loads it on start-up, so it is on the phone before they go offline.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
+        globIgnores: ['model/**'],
         // Workbox skips files over 2 MB by default: the model and the TF.js bundle are bigger.
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
         navigateFallback: '/index.html',
         runtimeCaching: [
+          {
+            // Model files never change in place: bump the cache name whenever new
+            // model files are dropped in, or phones keep the old ones.
+            urlPattern: /\/model\/.+/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'models-v1', expiration: { maxEntries: 40 } }
+          },
           {
             urlPattern: /^https:\/\/api\.open-meteo\.com\//,
             handler: 'NetworkFirst',

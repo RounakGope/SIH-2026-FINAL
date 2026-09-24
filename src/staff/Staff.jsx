@@ -5,7 +5,7 @@ import {
   mode, watchStaff, staffLogin, staffLogout, watchAllCases, decideCase, bulkWrite, clearSeed
 } from '../lib/store';
 import { TALUKAS, DISTRICT } from '../content/talukas';
-import { ipmFor, IPM, THRESHOLD } from '../content/ipm';
+import { ipmFor, classesFor, THRESHOLD } from '../content/ipm';
 import { countsForAlert } from '../content/rules';
 import { makeSeed } from './seed';
 
@@ -68,11 +68,14 @@ export function talukaStats(cases) {
   const since = Date.now() - 14 * DAY;
   return TALUKAS.map(tk => {
     const counted = cases.filter(c => c.taluka === tk.name && c.createdAt >= since && countsForAlert(c));
-    const byLabel = {};
-    counted.forEach(c => { byLabel[c.label] = (byLabel[c.label] || 0) + 1; });
-    const top = Object.entries(byLabel).sort((a, b) => b[1] - a[1])[0];
+    // Count per crop + disease: rust on soybean and rust on sugarcane are different outbreaks.
+    const byKind = {};
+    counted.forEach(c => { const k = (c.crop || 'Cotton') + '|' + c.label; byKind[k] = (byKind[k] || 0) + 1; });
+    const top = Object.entries(byKind).sort((a, b) => b[1] - a[1])[0];
+    const [topCrop, topLabel] = top ? top[0].split('|') : [];
     const n = counted.length;
-    return { ...tk, n, top: top?.[0], level: n >= 15 ? 'HIGH' : n >= 6 ? 'MEDIUM' : 'LOW' };
+    return { ...tk, n, top: top ? `${topCrop} ${ipmFor(topLabel, topCrop).name.en.toLowerCase()}` : null,
+      level: n >= 15 ? 'HIGH' : n >= 6 ? 'MEDIUM' : 'LOW' };
   });
 }
 
@@ -100,7 +103,7 @@ function Dashboard({ cases, pending, goQueue }) {
               <CircleMarker key={s.name} center={[s.lat, s.lon]} radius={10 + Math.sqrt(s.n) * 4}
                 pathOptions={{ color: LEVEL_COLOR[s.level], fillColor: LEVEL_COLOR[s.level], fillOpacity: 0.55, weight: 2 }}>
                 <Tooltip direction="top">
-                  <b>{s.name}</b> · {s.level}<br />{s.n} confirmed cases, last 14 days{s.top ? <><br />Mostly {ipmFor(s.top).name.en}</> : null}
+                  <b>{s.name}</b> · {s.level}<br />{s.n} confirmed cases, last 14 days{s.top ? <><br />Mostly {s.top}</> : null}
                 </Tooltip>
               </CircleMarker>
             ))}
@@ -111,7 +114,7 @@ function Dashboard({ cases, pending, goQueue }) {
           <div className="tlist">
             {[...stats].sort((a, b) => b.n - a.n).map(s => (
               <div key={s.name}>
-                <span><b>{s.name}</b>{s.top && <span className="small muted"> · {ipmFor(s.top).name.en}</span>}</span>
+                <span><b>{s.name}</b>{s.top && <span className="small muted"> · {s.top}</span>}</span>
                 <span className="row" style={{ gap: 8 }}><span className="small">{s.n}</span><span className={'lvl-chip lvl-' + s.level}>{s.level}</span></span>
               </div>
             ))}
@@ -139,7 +142,7 @@ function Queue({ pending, cases, staff }) {
           <div className="section-h">Recently decided (live farmer cases)</div>
           <div className="tlist">
             {recent.map(c => (
-              <div key={c.id}><span>{c.taluka} · {ipmFor(c.label).name.en}</span><span className="small muted">{c.status} · {new Date(c.expert.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span></div>
+              <div key={c.id}><span>{c.taluka} · {c.crop} {ipmFor(c.label, c.crop).name.en.toLowerCase()}</span><span className="small muted">{c.status} · {new Date(c.expert.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span></div>
             ))}
           </div>
         </div>
@@ -162,18 +165,18 @@ function QCard({ c, staff }) {
       </div>
       <div className="small muted">Day {c.cropDay} · {c.stage} · {c.plantsInfected}/{c.plantsWalked} plants · leaf {c.leafPct}%</div>
       <div className="top3">
-        {(c.top3 || []).map(x => <div key={x.label}><span>{ipmFor(x.label).name.en}</span><span className="muted">{Math.round(x.p * 100)}%</span></div>)}
+        {(c.top3 || []).map(x => <div key={x.label}><span>{ipmFor(x.label, c.crop).name.en}</span><span className="muted">{Math.round(x.p * 100)}%</span></div>)}
       </div>
       {!correcting ? (
         <div className="acts">
-          <button className="btn-line btn-sm btn-sage" disabled={busy} onClick={() => act({ status: 'confirmed', label: c.label })}>Confirm {ipmFor(c.label).name.en}</button>
+          <button className="btn-line btn-sm btn-sage" disabled={busy} onClick={() => act({ status: 'confirmed', label: c.label })}>Confirm {ipmFor(c.label, c.crop).name.en}</button>
           <button className="btn-line btn-sm" disabled={busy} onClick={() => setCorrecting(true)}>Correct…</button>
           <button className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'lab_referred' })}>Ask for lab sample</button>
         </div>
       ) : (
         <div className="acts">
-          {Object.keys(IPM).filter(l => l !== 'other').map(l => (
-            <button key={l} className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'corrected', label: l })}>{ipmFor(l).name.en}</button>
+          {classesFor(c.crop).map(l => (
+            <button key={l} className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'corrected', label: l })}>{ipmFor(l, c.crop).name.en}</button>
           ))}
           <button className="btn-line btn-sm" onClick={() => setCorrecting(false)}>Cancel</button>
         </div>
