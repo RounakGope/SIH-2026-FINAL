@@ -119,7 +119,13 @@ export default function Scan({ farm, user, cases, goProgress }) {
       </div>
 
       <div className="photo-box">
-        {latest ? <img src={latest.mask} alt="Scanned leaf with lesions highlighted" /> : <span style={{ fontSize: 48 }}>🍃</span>}
+        {latest
+          // The lesion overlay only means something for a disease: on a leaf the model
+          // calls healthy it would contradict the result.
+          ? ipmFor(latest.label, crop).diseased
+            ? <img src={latest.mask} alt="Scanned leaf with lesions highlighted" />
+            : <img src={latest.photo} alt="Scanned leaf" />
+          : <span style={{ fontSize: 48 }}>🍃</span>}
         {busy && <div className="scan-sweep" />}
         <span className="photo-tag">{t('plantOf', { i: Math.min(walked + (busy ? 1 : 0) || 1, PLANTS) })}</span>
         {busy && <span className="photo-tag bottom">{t('analysing')}</span>}
@@ -170,7 +176,7 @@ function Result({ plant, farm, crop, caseId, day, stage, infected, walked, saved
         <h3 style={{ fontSize: 21, fontFamily: 'var(--font-heading)', fontWeight: 400 }}>{pick(info.name)}</h3>
         {plant.views === 2 && <div className="small muted">{t('twoViews')}</div>}
         <div className="stats" style={{ marginTop: 10 }}>
-          <div className="stat"><b>{plant.leafPct}%</b><span>{t('severity')}</span></div>
+          <div className="stat"><b>{info.diseased ? plant.leafPct + '%' : '—'}</b><span>{t('severity')}</span></div>
           <div className="stat"><b>{infected}/{walked}</b><span>{t('plantsInfected')}</span></div>
           <div className="stat"><b>{t('day')} {day}</b><span>{stageName(stage, lang)}</span></div>
         </div>

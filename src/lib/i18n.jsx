@@ -94,6 +94,7 @@ const S = {
   rDistrict: { en: 'Whole district', mr: 'संपूर्ण जिल्हा', hi: 'पूरा ज़िला' },
   widened: { en: 'Too few reports close by, so this shows: {r}.', mr: 'जवळ पुरेशा नोंदी नाहीत, म्हणून हे दाखवत आहे: {r}.', hi: 'पास में कम रिपोर्ट हैं, इसलिए यह दिखा रहे हैं: {r}।' },
   farmsN: { en: '{n} farms', mr: '{n} शेते', hi: '{n} खेत' },
+  farm1: { en: '1 farm', mr: '1 शेत', hi: '1 खेत' },
   nearbyPrivacy: { en: 'Circles are 5 km areas, never single farms. Only expert-confirmed scans and scans above 70% confidence count.', mr: 'वर्तुळे 5 किमीचे भाग आहेत, एकही शेत ओळखता येत नाही. फक्त तज्ञांनी खात्री केलेले व 70% पेक्षा जास्त खात्रीचे स्कॅन मोजले जातात.', hi: 'घेरे 5 किमी के इलाके हैं, कोई एक खेत नहीं। सिर्फ़ विशेषज्ञ से पुष्ट और 70% से ज़्यादा भरोसे वाले स्कैन गिने जाते हैं।' },
   nearbyEmpty: { en: 'No confirmed reports for your crop ({r}) in the last 14 days.', mr: 'गेल्या 14 दिवसांत तुमच्या पिकासाठी ({r}) कोणतीही खात्रीशीर नोंद नाही.', hi: 'पिछले 14 दिनों में आपकी फ़सल के लिए ({r}) कोई पुष्ट रिपोर्ट नहीं।' },
   sevShort: { en: 'severity {s}', mr: 'तीव्रता {s}', hi: 'गंभीरता {s}' },

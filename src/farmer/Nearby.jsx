@@ -14,6 +14,7 @@ const RADII = ['5km', 'taluka', 'district'];
 // report it, with what has worked for neighbours. Built from anonymous reports only.
 export default function Nearby({ farm, myCases }) {
   const { t, pick, lang } = useLang();
+  const farmsN = n => t(n === 1 ? 'farm1' : 'farmsN', { n });
   const [reports, setReports] = useState([]);
   const [radius, setRadius] = useState('5km');
   const [open, setOpen] = useState(null);
@@ -50,7 +51,7 @@ export default function Nearby({ farm, myCases }) {
           {cells.map(c => (
             <CircleMarker key={c.cy + ',' + c.cx} center={cellCentre(c.cy, c.cx)} radius={8 + Math.sqrt(c.n) * 5}
               pathOptions={{ color: sevColour(c.sev), fillColor: sevColour(c.sev), fillOpacity: 0.45, weight: 1.5 }}>
-              <Tooltip>{t('farmsN', { n: c.n })}</Tooltip>
+              <Tooltip>{farmsN(c.n)}</Tooltip>
             </CircleMarker>
           ))}
         </MapContainer>
@@ -64,7 +65,7 @@ export default function Nearby({ farm, myCases }) {
           {res.groups.map(g => (
             <button key={g.label} className={open === g.label ? 'on' : ''} aria-expanded={open === g.label}
               onClick={() => setOpen(open === g.label ? null : g.label)}>
-              <span><b>{pick(g.info.name)}</b><br /><span className="small muted">{t('farmsN', { n: g.farms })}{g.severity != null ? ' · ' + t('sevShort', { s: g.severity }) : ''}</span></span>
+              <span><b>{pick(g.info.name)}</b><br /><span className="small muted">{farmsN(g.farms)}{g.severity != null ? ' · ' + t('sevShort', { s: g.severity }) : ''}</span></span>
               <span aria-hidden="true">{open === g.label ? '▾' : '▸'}</span>
             </button>
           ))}
