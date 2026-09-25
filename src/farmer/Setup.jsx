@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useLang } from '../lib/i18n';
-import { CROPS, cropDay, stageFor, STAGE_MR } from '../content/rules';
+import { CROPS, cropDay, stageFor, stageName, cropName } from '../content/rules';
 import { TALUKAS, DEFAULT_LOCATION, nearestTaluka } from '../content/talukas';
 import { Pin } from './Icons';
+import { saveSettings, removePlot, getPlots } from '../lib/store';
 
-export default function Setup({ farm, onSave }) {
+export default function Setup({ farm, settings = {}, onSave, onNewPlot }) {
   const { t, lang } = useLang();
   const [f, setF] = useState(() => farm || {
     crop: 'Cotton', variety: CROPS.Cotton.variety, sowDate: defaultSowDate(), acres: 2,
@@ -43,7 +44,7 @@ export default function Setup({ farm, onSave }) {
           {Object.entries(CROPS).map(([name, c]) => (
             <button key={name} className={'choice' + (f.crop === name ? ' on' : '')}
               onClick={() => set({ crop: name, variety: c.variety })}>
-              <span>{c.icon}</span>{lang === 'mr' ? c.mr : name}
+              <span>{c.icon}</span>{cropName(name, lang)}
             </button>
           ))}
         </div>
@@ -59,7 +60,7 @@ export default function Setup({ farm, onSave }) {
         <input className="input" type="date" value={f.sowDate} onChange={e => set({ sowDate: e.target.value })} />
       </div>
       {day && (
-        <div className="info-strip">⏱ {t('day')} {day} · {lang === 'mr' ? STAGE_MR[stage] : stage}</div>
+        <div className="info-strip">⏱ {t('day')} {day} · {stageName(stage, lang)}</div>
       )}
 
       <div>
@@ -78,14 +79,65 @@ export default function Setup({ farm, onSave }) {
             const tk = TALUKAS.find(x => x.name === e.target.value);
             set({ taluka: tk.name, lat: tk.lat, lon: tk.lon });
           }}>
-            {TALUKAS.map(tk => <option key={tk.name} value={tk.name}>{lang === 'mr' ? tk.mr : tk.name}</option>)}
+            {TALUKAS.map(tk => <option key={tk.name} value={tk.name}>{tk[lang] || tk.name}</option>)}
           </select>
           <button className="btn-line" onClick={gps} style={{ flex: 'none' }}><Pin />{t('useGps')}</button>
         </div>
         {gpsMsg && <div className="small muted" style={{ marginTop: 6 }}>{gpsMsg}</div>}
       </div>
 
-      <button className="btn-big" onClick={() => onSave({ ...f, traps: f.traps || [] })}>{t('saveField')}</button>
+      {settings.assistant && (
+        <div>
+          <div className="label">{t('farmerName')}</div>
+          <input className="input" value={f.farmerName || ''} onChange={e => set({ farmerName: e.target.value })} />
+        </div>
+      )}
+
+      <div>
+        <div className="label">{t('phone')}</div>
+        <input className="input" type="tel" inputMode="numeric" maxLength={10} placeholder="98XXXXXXXX"
+          value={f.phone || ''} onChange={e => set({ phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
+        <label className="check">
+          <input type="checkbox" checked={!!f.smsConsent} disabled={!/^[6-9]\d{9}$/.test(f.phone || '')}
+            onChange={e => set({ smsConsent: e.target.checked })} />
+          <span>{t('smsConsent')}</span>
+        </label>
+      </div>
+
+      <div className="card-light">
+        <div className="section-h">{t('privacyTitle')}</div>
+        <label className="check">
+          <input type="checkbox" checked={f.share === true} onChange={e => set({ share: e.target.checked })} />
+          <span>{t('shareConsent')}<br /><span className="small muted">{t('shareConsentHint')}</span></span>
+        </label>
+      </div>
+
+      <button className="btn-big" onClick={() => onSave({ ...f, lang, traps: f.traps || [] })}>{t('saveField')}</button>
+
+      <div className="card-light">
+        <div className="section-h">{t('deviceTitle')}</div>
+        <label className="check">
+          <input type="checkbox" checked={!!settings.lowData} onChange={e => saveSettings({ lowData: e.target.checked })} />
+          <span>{t('lowData')}<br /><span className="small muted">{t('lowDataHint')}</span></span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={!!settings.assistant} onChange={e => saveSettings({ assistant: e.target.checked })} />
+          <span>{t('assistantMode')}<br /><span className="small muted">{t('assistantHint')}</span></span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={!!f.sensorSim} onChange={e => set({ sensorSim: e.target.checked })} />
+          <span>{t('sensorSim')}<br /><span className="small muted">{t('sensorSimHint')}</span></span>
+        </label>
+        {farm?.id && <div className="small muted" style={{ marginTop: 6 }}>{t('sensorCode')}: <code style={{ userSelect: 'all' }}>{farm.id}</code></div>}
+        {settings.assistant && (
+          <div className="row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+            <button className="btn-line btn-sm" onClick={onNewPlot}>+ {t('addPlot')}</button>
+            {farm && getPlots().length > 1 && (
+              <button className="btn-line btn-sm" onClick={() => removePlot(farm.id)}>{t('removePlot')}</button>
+            )}
+          </div>
+        )}
+      </div>
 
       <Credits />
     </main>

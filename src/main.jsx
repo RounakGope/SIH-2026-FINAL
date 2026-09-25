@@ -12,6 +12,8 @@ import './styles/app.css';
 import { LangProvider } from './lib/i18n';
 import FarmerApp from './farmer/FarmerApp';
 import Staff from './staff/Staff';
+import SmsInbox from './channels/SmsInbox';
+import IvrSim from './channels/IvrSim';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -19,6 +21,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <BrowserRouter>
         <Routes>
           <Route path="/staff/*" element={<Staff />} />
+          <Route path="/sms" element={<SmsInbox />} />
+          <Route path="/ivr" element={<IvrSim />} />
           <Route path="*" element={<FarmerApp />} />
         </Routes>
       </BrowserRouter>

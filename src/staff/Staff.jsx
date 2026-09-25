@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
-  mode, watchStaff, staffLogin, staffLogout, watchAllCases, decideCase, bulkWrite, clearSeed
+  mode, watchStaff, staffLogin, staffLogout, watchAllCases, decideCase, bulkWrite, clearSeed, sendSms, broadcast, registeredPhones
 } from '../lib/store';
+import { expertReplySms, blockAlertSms, escalationSms } from '../content/sms';
+import { bioInputPlan, surveillanceCsv, trainingZip, download, isEscalated, ESCALATE_AFTER_H } from './tools';
 import { TALUKAS, DISTRICT } from '../content/talukas';
 import { ipmFor, classesFor, THRESHOLD } from '../content/ipm';
 import { countsForAlert } from '../content/rules';
@@ -24,6 +26,7 @@ export default function Staff() {
   if (!staff) return <Login />;
 
   const pending = cases.filter(c => c.status === 'pending_review').sort((a, b) => a.createdAt - b.createdAt);
+  const escalated = pending.filter(isEscalated);
 
   return (
     <div className="staff">
@@ -31,15 +34,19 @@ export default function Staff() {
         <h1>FasalRakshak · {DISTRICT}</h1>
         <div className="staff-tabs">
           <button className={tab === 'map' ? 'on' : ''} onClick={() => setTab('map')}>District dashboard</button>
-          <button className={tab === 'queue' ? 'on' : ''} onClick={() => setTab('queue')}>Review queue ({pending.length})</button>
+          <button className={tab === 'queue' ? 'on' : ''} onClick={() => setTab('queue')}>Review queue ({pending.length}){escalated.length ? ` · ${escalated.length} late` : ''}</button>
+          <button className={tab === 'actions' ? 'on' : ''} onClick={() => setTab('actions')}>Actions</button>
         </div>
         <div style={{ flex: 1 }} />
         <span className="small">{staff.email}</span>
-        {mode === 'firebase' && <button className="btn-line btn-sm" style={{ color: '#f0fae1', borderColor: 'rgba(240,250,225,.4)' }} onClick={staffLogout}>Log out</button>}
+        {mode !== 'local' && <button className="btn-line btn-sm" style={{ color: '#f0fae1', borderColor: 'rgba(240,250,225,.4)' }} onClick={staffLogout}>Log out</button>}
       </header>
       <div className="staff-body">
-        {mode === 'local' && <div className="banner">Local demo mode: data lives in this browser only. Add Firebase keys in .env to share it between phone and laptop.</div>}
-        {tab === 'map' ? <Dashboard cases={cases} pending={pending} goQueue={() => setTab('queue')} /> : <Queue pending={pending} cases={cases} staff={staff} />}
+        {mode === 'local' && <div className="banner">Demo mode: cases are kept in this browser, so open the farmer app in another tab of this browser to see them arrive here.</div>}
+        {mode !== 'api' && <AutoMessages cases={cases} />}
+        {tab === 'map' ? <Dashboard cases={cases} pending={pending} escalated={escalated} goQueue={() => setTab('queue')} goActions={() => setTab('actions')} />
+          : tab === 'queue' ? <Queue pending={pending} cases={cases} staff={staff} />
+          : <Actions cases={cases} />}
         <SeedControls count={cases.filter(c => c.seed).length} />
       </div>
     </div>
@@ -52,9 +59,9 @@ function Login() {
   const [err, setErr] = useState('');
   return (
     <div className="staff">
-      <form className="login" onSubmit={e => { e.preventDefault(); setErr(''); staffLogin(email, pw).catch(x => setErr(x.code || 'Login failed')); }}>
+      <form className="login" onSubmit={e => { e.preventDefault(); setErr(''); staffLogin(email, pw).catch(x => setErr(x.code || x.message || 'Login failed')); }}>
         <h2 className="h-title">Staff login</h2>
-        <p className="small muted">KVK experts and district officers. Accounts are created in the Firebase console.</p>
+        <p className="small muted">KVK experts and district officers. {mode === 'api' ? 'Accounts are created on the FasalRakshak server.' : 'Accounts are created in the Firebase console.'}</p>
         <input className="input" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input className="input" type="password" placeholder="Password" value={pw} onChange={e => setPw(e.target.value)} />
         <button className="btn-big" type="submit">Log in</button>
@@ -79,7 +86,7 @@ export function talukaStats(cases) {
   });
 }
 
-function Dashboard({ cases, pending, goQueue }) {
+function Dashboard({ cases, pending, escalated, goQueue, goActions }) {
   const stats = useMemo(() => talukaStats(cases), [cases]);
   const week = cases.filter(c => c.createdAt >= Date.now() - 7 * DAY).length;
   const replies = cases.filter(c => c.expert?.at && c.createdAt >= Date.now() - 30 * DAY)
@@ -94,6 +101,18 @@ function Dashboard({ cases, pending, goQueue }) {
         <div className="tile"><b>{week}</b><span>Cases this week</span></div>
         <div className="tile hot" style={{ cursor: 'pointer' }} onClick={goQueue}><b>{pending.length}</b><span>Pending reviews →</span></div>
         <div className="tile"><b>{median != null ? median + ' h' : '—'}</b><span>Median expert reply</span></div>
+        <div className={'tile' + (escalated.length ? ' hot' : '')} style={{ cursor: 'pointer' }} onClick={goQueue}><b>{escalated.length}</b><span>Waiting over {ESCALATE_AFTER_H} h →</span></div>
+      </div>
+      <div className="card-light">
+        <div className="section-h">One-click actions</div>
+        <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+          <button className="btn-line btn-sm" onClick={goQueue}>Open the {pending.length} pending reviews</button>
+          <button className="btn-line btn-sm" onClick={goActions}>Broadcast an advisory by SMS</button>
+          <button className="btn-line btn-sm" onClick={goActions}>Plan bio-input stock by block</button>
+          <button className="btn-line btn-sm" onClick={goActions}>Export the week to CROPSAP / NPSS</button>
+          <a className="btn-line btn-sm" href="/sms" target="_blank" rel="noreferrer">SMS sandbox inbox</a>
+          <a className="btn-line btn-sm" href="/ivr" target="_blank" rel="noreferrer">IVR / missed-call line</a>
+        </div>
       </div>
       <div className="map-grid">
         <div className="map">
@@ -154,33 +173,53 @@ function Queue({ pending, cases, staff }) {
 function QCard({ c, staff }) {
   const [correcting, setCorrecting] = useState(false);
   const [busy, setBusy] = useState(false);
-  const act = d => { setBusy(true); decideCase(c.id, d, staff.email).catch(e => { alertless(e); setBusy(false); }); };
+  const [err, setErr] = useState('');
+  const act = async d => {
+    setBusy(true); setErr('');
+    try {
+      const updated = await decideCase(c.id, d, staff.email);
+      // Farmer told by SMS (the API server does this itself).
+      if (mode !== 'api' && c.phone) {
+        const text = expertReplySms({ ...c, ...(updated || {}), status: d.status, label: d.label || c.label }, c.lang || 'mr');
+        if (text) sendSms({ to: c.phone, text, kind: 'expert', taluka: c.taluka });
+      }
+    } catch (e) { console.error(e); setErr('Not saved: ' + (e.message || 'try again')); setBusy(false); }
+  };
   const ageH = Math.round((Date.now() - c.createdAt) / 3600000);
+  const voice = c.kind === 'ivr'; // no photo and no model label: the expert calls back and diagnoses
+  const walk = [c.cropDay != null && 'Day ' + c.cropDay, c.stage, c.plantsWalked && `${c.plantsInfected}/${c.plantsWalked} plants`,
+    c.leafPct != null && `leaf ${c.leafPct}%`].filter(Boolean).join(' · ');
   return (
     <div className="qcard">
-      {c.photo ? <img src={c.photo} alt="Leaf photo from farmer" /> : <div className="ph" />}
+      {c.kind === 'ivr'
+        ? <div className="ivr-box"><b>📞 Voice report</b><p className="small" style={{ margin: '4px 0' }}>“{c.transcript || '(no transcript)'}”</p>
+            <a className="btn-line btn-sm" href={'tel:' + c.phone}>Call back {c.phone}</a></div>
+        : c.photo ? <img src={c.photo} alt="Leaf photo from farmer" /> : <div className="ph" />}
+      {isEscalated(c) && <div className="lvl-chip lvl-HIGH" style={{ alignSelf: 'flex-start' }}>Escalated to district officer</div>}
+      {c.serverCheck && <div className="small">Server re-check: {ipmFor(c.serverCheck.label, c.crop).name.en} {Math.round(c.serverCheck.p * 100)}% {c.serverCheck.agrees ? '(agrees)' : '(disagrees with the phone)'}</div>}
       <div className="row between">
         <b>{c.taluka} · {c.crop}</b>
         <span className={'small ' + (ageH > 24 ? 'lvl-chip lvl-HIGH' : 'muted')}>{ageH} h ago</span>
       </div>
-      <div className="small muted">Day {c.cropDay} · {c.stage} · {c.plantsInfected}/{c.plantsWalked} plants · leaf {c.leafPct}%</div>
+      {walk && <div className="small muted">{walk}</div>}
       <div className="top3">
         {(c.top3 || []).map(x => <div key={x.label}><span>{ipmFor(x.label, c.crop).name.en}</span><span className="muted">{Math.round(x.p * 100)}%</span></div>)}
       </div>
       {!correcting ? (
         <div className="acts">
-          <button className="btn-line btn-sm btn-sage" disabled={busy} onClick={() => act({ status: 'confirmed', label: c.label })}>Confirm {ipmFor(c.label, c.crop).name.en}</button>
-          <button className="btn-line btn-sm" disabled={busy} onClick={() => setCorrecting(true)}>Correct…</button>
+          {!voice && <button className="btn-line btn-sm btn-sage" disabled={busy} onClick={() => act({ status: 'confirmed', label: c.label })}>Confirm {ipmFor(c.label, c.crop).name.en}</button>}
+          <button className="btn-line btn-sm" disabled={busy} onClick={() => setCorrecting(true)}>{voice ? 'Diagnose…' : 'Correct…'}</button>
           <button className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'lab_referred' })}>Ask for lab sample</button>
         </div>
       ) : (
         <div className="acts">
-          {classesFor(c.crop).map(l => (
+          {classesFor(c.crop).filter(l => !(voice && l === 'other')).map(l => (
             <button key={l} className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'corrected', label: l })}>{ipmFor(l, c.crop).name.en}</button>
           ))}
           <button className="btn-line btn-sm" onClick={() => setCorrecting(false)}>Cancel</button>
         </div>
       )}
+      {err && <div className="small" style={{ color: '#a8341f' }}>{err}</div>}
     </div>
   );
 }
@@ -199,3 +238,107 @@ function SeedControls({ count }) {
 }
 
 function alertless(e) { console.error(e); }
+
+// Local / Firebase modes have no server scheduler, so the dashboard sends the
+// automatic messages: SMS block alerts when a taluka turns HIGH for a crop, and an
+// escalation SMS to the district officer for cases unanswered after 24 h. Each is
+// sent once (remembered in this browser).
+function AutoMessages({ cases }) {
+  useEffect(() => {
+    const sent = new Set(JSON.parse(localStorage.getItem('fr_auto_sms') || '[]'));
+    const mark = k => { sent.add(k); localStorage.setItem('fr_auto_sms', JSON.stringify([...sent])); };
+    const day = new Date().toISOString().slice(0, 10);
+    const since = Date.now() - 14 * DAY;
+    // Block alerts: per taluka, crop and disease, 15+ counted farms = HIGH.
+    const groups = {};
+    for (const c of cases) {
+      if (c.createdAt < since || !countsForAlert(c)) continue;
+      const k = [c.taluka, c.crop || 'Cotton', c.label].join('|');
+      groups[k] = (groups[k] || 0) + 1;
+    }
+    for (const [k, n] of Object.entries(groups)) {
+      if (n < 15 || sent.has('alert|' + k + '|' + day)) continue;
+      const [taluka, crop, label] = k.split('|');
+      for (const r of registeredPhones(taluka).filter(r => !r.crop || r.crop === crop)) {
+        sendSms({ to: r.phone, text: blockAlertSms({ taluka, crop, label, farms: n }, r.lang || 'mr'), kind: 'alert', taluka });
+      }
+      mark('alert|' + k + '|' + day);
+    }
+    for (const c of cases.filter(isEscalated)) {
+      if (sent.has('esc|' + c.id)) continue;
+      sendSms({ to: 'District Agriculture Officer, Wardha', text: escalationSms(c), kind: 'escalation', taluka: c.taluka });
+      mark('esc|' + c.id);
+    }
+  }, [cases]);
+  return null;
+}
+
+function Actions({ cases }) {
+  const [taluka, setTaluka] = useState(TALUKAS[0].name);
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState('');
+  const plan = useMemo(() => bioInputPlan(cases), [cases]);
+  const recipients = registeredPhones(taluka).length;
+  const send = async () => {
+    setStatus('Sending…');
+    const r = await broadcast({ taluka, text });
+    setStatus(`Sent to ${r.sent} registered number${r.sent === 1 ? '' : 's'} in ${taluka} (sandbox gateway).`);
+    setText('');
+  };
+  const exportCsv = () => {
+    const { csv, count } = surveillanceCsv(cases);
+    download(new Blob([csv], { type: 'text/csv' }), `fasalrakshak-cropsap-npss-${localDate()}.csv`);
+    setStatus(`Exported ${count} cases from the last 7 days.`);
+  };
+  const exportTraining = async () => {
+    setStatus('Building the training set…');
+    const { blob, count } = await trainingZip(cases);
+    download(blob, `fasalrakshak-training-${localDate()}.zip`);
+    setStatus(`Exported ${count} expert-checked photos for retraining.`);
+  };
+  return (
+    <div className="actions-grid">
+      <section className="card-light">
+        <div className="section-h">Broadcast an advisory by SMS</div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <select className="input" style={{ maxWidth: 220 }} value={taluka} onChange={e => setTaluka(e.target.value)}>
+            {TALUKAS.map(t => <option key={t.name}>{t.name}</option>)}
+          </select>
+          <span className="small muted">{mode === 'api' ? 'Recipients are counted on the server.' : `${recipients} registered number${recipients === 1 ? '' : 's'}`}</span>
+        </div>
+        <textarea className="input" rows={3} style={{ marginTop: 8, borderRadius: 16 }} maxLength={320} value={text}
+          placeholder="e.g. Pink bollworm above threshold in Hinganghat. Check 20 green bolls this week; spray only if 2 or more are infested."
+          onChange={e => setText(e.target.value)} />
+        <div className="row between" style={{ marginTop: 8 }}>
+          <span className="small muted">{text.length}/320 · write it in the language farmers read</span>
+          <button className="btn-line btn-sm btn-sage" disabled={!text.trim()} onClick={send}>Send SMS</button>
+        </div>
+      </section>
+
+      <section className="card-light">
+        <div className="section-h">Bio-input stock for one application round, by block</div>
+        {plan.length === 0 ? <p className="small muted">No counted cases in the last 14 days.</p> : (
+          <table className="plan">
+            <thead><tr><th>Taluka</th><th>Cases</th><th>Acres affected</th><th>Neem oil (L)</th><th>NSKE (kg)</th><th>Trichoderma (kg)</th></tr></thead>
+            <tbody>{plan.map(r => <tr key={r.taluka}><td>{r.taluka}</td><td>{r.cases}</td><td>{r.acres}</td><td>{r.neemOilL}</td><td>{r.nskeKg}</td><td>{r.trichodermaKg}</td></tr>)}</tbody>
+          </table>
+        )}
+        <p className="small muted" style={{ marginBottom: 0 }}>Acres affected = plot area × share of plants infected. Doses from the IPM content: neem oil 5 ml/L and NSKE 5% at 195 L of spray per acre; Trichoderma 2.5 kg/ha for chickpea wilt.</p>
+      </section>
+
+      <section className="card-light">
+        <div className="section-h">Exports</div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn-line btn-sm" onClick={exportCsv}>This week for CROPSAP / NPSS (CSV)</button>
+          <button className="btn-line btn-sm" onClick={exportTraining}>Expert-checked photos for retraining (ZIP)</button>
+        </div>
+        <p className="small muted" style={{ marginBottom: 0 }}>Neither CROPSAP nor NPSS publishes an import API, so the export is a flat CSV with the fields their survey forms use; location is rounded to about 10 km.</p>
+      </section>
+      {status && <div className="banner" role="status">{status}</div>}
+    </div>
+  );
+}
+
+function localDate(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}

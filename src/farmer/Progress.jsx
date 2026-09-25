@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import { useLang } from '../lib/i18n';
-import { ipmFor, ECONOMICS } from '../content/ipm';
+import { ipmFor } from '../content/ipm';
+import { PRICE } from '../content/schemes';
+import { evidencePdf } from '../lib/evidence';
+import Schemes from './Schemes';
 
 // Field severity index = % plants infected × average leaf severity ÷ 100.
 export function fieldIndex(c) {
@@ -30,8 +34,15 @@ export default function Progress({ farm, cases }) {
     observed = EXAMPLE.observed; projected = EXAMPLE.projected;
     labels = observed.map((_, i) => 'Wk' + (i + 1));
   }
-  const gap = projected[projected.length - 1] - observed[observed.length - 1];
-  const kept = observed[0] < 1 ? 0 : Math.max(0, Math.round((farm.acres * ECONOMICS.valueProtectedPerAcre * gap) / 100));
+  const gap = Math.max(0, projected[projected.length - 1] - observed[observed.length - 1]);
+  // Price the gap at MSP with the farmer's own usual yield (entered under Schemes).
+  let yieldQ = null;
+  try { yieldQ = JSON.parse(localStorage.getItem('fr_scheme_inputs'))?.[farm.id]?.yieldQPerAcre ?? null; } catch {}
+  const price = PRICE[farm.crop];
+  const kept = yieldQ && price ? Math.round(yieldQ * farm.acres * price.rs * gap / 100) : null;
+  const [making, setMaking] = useState(false);
+  const [, setInputsVersion] = useState(0); // re-price the gap as the farmer types
+  const makePdf = async () => { setMaking(true); try { await evidencePdf(farm, cases); } finally { setMaking(false); } };
 
   return (
     <main className="content">
@@ -52,9 +63,10 @@ export default function Progress({ farm, cases }) {
 
       <div className="saved-card">
         <div className="small" style={{ opacity: .85, letterSpacing: '.08em', textTransform: 'uppercase' }}>
-          {lang === 'mr' ? 'फरक, बाजारभावाने' : 'The gap, priced at the mandi rate'}</div>
-        <b>₹{kept.toLocaleString('en-IN')}</b>
-        <div className="small">{lang === 'mr' ? `${farm.acres} एकरवर वाचवलेले उत्पन्न` : `of yield kept on ${farm.acres} acres`} · {t('illustrative')}</div>
+          {t('gapTitle')}</div>
+        {kept != null
+          ? <><b>₹{kept.toLocaleString('en-IN')}</b><div className="small">{t('yieldKept', { a: farm.acres })} · {t('atMspShort', { p: price.rs.toLocaleString('en-IN') })}{real ? '' : ' · ' + t('illustrative')}</div></>
+          : <div className="small" style={{ marginTop: 6 }}>{t('enterYield')}</div>}
       </div>
 
       <section className="card">
@@ -67,7 +79,7 @@ export default function Progress({ farm, cases }) {
                 <div style={{ flex: 1 }}>
                   <b>{pick(ipmFor(c.label, c.crop).name)}</b> · {t('severityIndex').toLowerCase()} {fieldIndex(c)}
                   <div className="small muted">
-                    {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {c.plantsInfected}/{c.plantsWalked} · {statusText(c, lang)}
+                    {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {c.plantsInfected}/{c.plantsWalked} · {statusText(c, t)}
                   </div>
                 </div>
               </div>
@@ -75,17 +87,23 @@ export default function Progress({ farm, cases }) {
           </div>
         )}
       </section>
+
+      <section className="card-light">
+        <div className="section-h">{t('evidenceTitle')}</div>
+        <p className="small" style={{ marginTop: 0 }}>{t('evidenceLead')}</p>
+        <button className="btn-big" disabled={making || scans.length === 0} onClick={makePdf}>
+          {making ? t('evidenceMaking') : '📄 ' + t('evidenceButton')}
+        </button>
+      </section>
+
+      <Schemes farm={farm} cases={cases} gapPct={real ? gap : undefined} onChange={() => setInputsVersion(n => n + 1)} />
     </main>
   );
 }
 
-function statusText(c, lang) {
-  const m = {
-    auto: ['on-device', 'फोनवर'], pending_review: ['waiting for expert', 'तज्ञांकडे'],
-    confirmed: ['expert-confirmed', 'तज्ञांनी खात्री केली'], corrected: ['expert-corrected', 'तज्ञांनी दुरुस्त केले'],
-    lab_referred: ['lab sample asked', 'प्रयोगशाळा नमुना']
-  }[c.status] || ['', ''];
-  return lang === 'mr' ? m[1] : m[0];
+function statusText(c, t) {
+  const key = { auto: 'stOnDevice', pending_review: 'stPending', confirmed: 'stConfirmed', corrected: 'stCorrected', lab_referred: 'stLab' }[c.status];
+  return key ? t(key) : '';
 }
 
 function Chart({ observed, projected, labels }) {

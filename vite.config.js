@@ -38,7 +38,7 @@ export default defineConfig({
             // model files are dropped in, or phones keep the old ones.
             urlPattern: /\/model\/.+/,
             handler: 'CacheFirst',
-            options: { cacheName: 'models-v1', expiration: { maxEntries: 40 } }
+            options: { cacheName: 'models-v2', expiration: { maxEntries: 40 } }
           },
           {
             urlPattern: /^https:\/\/api\.open-meteo\.com\//,

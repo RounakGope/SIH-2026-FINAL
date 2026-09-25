@@ -157,3 +157,51 @@ select.input { appearance: none; }
 .login { max-width: 360px; margin: 60px auto; display: flex; flex-direction: column; gap: 10px; }
 .banner { background: #fff3a6; color: #5a4a00; border-radius: 14px; padding: 8px 12px; font-size: 12.5px; }
 .leaflet-container { font-family: var(--font-body); }
+
+/* ---- next build: settings, plots, nearby, schemes ---- */
+.check { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; font-size: 14.5px; cursor: pointer; }
+.check input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--color-accent); flex: none; }
+.plot-switch {
+  font: inherit; font-size: 12px; color: inherit; background: transparent; border: 0;
+  padding: 0; max-width: 150px; text-overflow: ellipsis; opacity: .85;
+}
+.seg-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg-row button {
+  font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+  border: 1.5px solid var(--color-neutral-300); background: transparent; color: inherit;
+}
+.seg-row button.on { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.nearby-map { height: 260px; border-radius: 18px; overflow: hidden; }
+.olist { display: grid; gap: 8px; }
+.olist button {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left;
+  font: inherit; width: 100%; padding: 12px 14px; border-radius: 16px; cursor: pointer;
+  border: 1.5px solid var(--color-neutral-300); background: var(--color-surface, #ebddc5); color: inherit;
+}
+.olist button.on { border-color: var(--color-accent); }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kv > div { background: var(--color-bg); border-radius: 12px; padding: 8px 10px; }
+.kv b { display: block; font-size: 17px; }
+.kv span { font-size: 12px; opacity: .75; }
+.num-in { width: 100%; }
+.deadline-banner { border-radius: 16px; padding: 12px 14px; background: var(--color-accent-2-100, #e3e6d4); font-size: 14px; }
+.step-done { font-size: 12px; margin-top: 6px; }
+.server-check { font-size: 13px; border-radius: 12px; padding: 8px 10px; background: var(--color-accent-2-100, #e3e6d4); }
+
+/* ---- staff: actions ---- */
+.actions-grid { display: grid; gap: 14px; }
+.plan { width: 100%; border-collapse: collapse; font-size: 13px; }
+.plan th, .plan td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--color-divider); }
+.plan th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
+.ivr-box { background: var(--color-neutral-100); border-radius: 14px; padding: 10px 12px; }
+
+/* ---- channels: SMS sandbox, IVR simulator ---- */
+.sms-list { display: grid; gap: 10px; }
+.sms .bubble { background: var(--color-neutral-100); border-radius: 18px 18px 18px 6px; padding: 10px 14px; margin-top: 4px; font-size: 14.5px; line-height: 1.45; }
+.ivr-log { display: grid; gap: 6px; max-height: 280px; overflow-y: auto; }
+.ivr-line { padding: 8px 12px; border-radius: 14px; font-size: 14px; }
+.ivr-line.line { background: var(--color-neutral-100); }
+.ivr-line.caller { background: var(--color-accent-2-100, #e3e6d4); justify-self: end; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.keypad button { font: inherit; font-size: 22px; font-weight: 600; padding: 14px 0; border-radius: 999px; border: 1.5px solid var(--color-neutral-300); background: var(--color-bg); cursor: pointer; }
+.keypad button:active { background: var(--color-accent-2-100, #e3e6d4); }

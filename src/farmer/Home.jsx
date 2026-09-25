@@ -1,20 +1,26 @@
 import { useEffect, useState } from 'react';
-import { useLang } from '../lib/i18n';
-import { evaluateRisks, cropDay, PBW_ETL, CROPS } from '../content/rules';
+import { useLang, LOCALE } from '../lib/i18n';
+import { evaluateRisks, cropDay, PBW_ETL, cropName } from '../content/rules';
 import { getWeather } from '../lib/weather';
-import { watchTaluka } from '../lib/store';
+import { watchTaluka, watchSensor } from '../lib/store';
+import { startSensorSim, wetHours } from '../lib/sensorSim';
 import { Alert } from './Icons';
+import Speak from './Speak';
 
 export default function Home({ farm, myCases, onFarm, goScan }) {
   const { t, pick, lang } = useLang();
   const [weather, setWeather] = useState(null);
   const [talukaCases, setTalukaCases] = useState([]);
   const [count, setCount] = useState('');
+  const [sensor, setSensor] = useState([]);
 
   useEffect(() => { getWeather(farm.lat, farm.lon).then(setWeather); }, [farm.lat, farm.lon]);
   useEffect(() => watchTaluka(farm.taluka, setTalukaCases), [farm.taluka]);
+  useEffect(() => { if (farm.sensorSim) startSensorSim(farm.id); return watchSensor(farm.id, setSensor); }, [farm.id, farm.sensorSim]);
+  const lastReading = sensor[sensor.length - 1];
+  const wet = lastReading ? wetHours(sensor) : null;
 
-  const risks = evaluateRisks(farm, weather, talukaCases, new Set(myCases.map(c => c.id)));
+  const risks = evaluateRisks(farm, weather, talukaCases, new Set(myCases.map(c => c.id)), wet);
   const [top, ...rest] = risks;
   const pbw = risks.find(r => r.id === 'pbw');
 
@@ -33,14 +39,14 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
     <main className="content">
       <div className="row between">
         <h2 className="h-title">{t('riskTitle')}</h2>
-        <span className="pill pill-neutral">{lang === 'mr' ? CROPS[farm.crop]?.mr : farm.crop} · {t('day')} {cropDay(farm.sowDate)}</span>
+        <span className="pill pill-neutral">{cropName(farm.crop, lang)} · {t('day')} {cropDay(farm.sowDate)}</span>
       </div>
 
       {top && (
         <section className={'risk-hero ' + top.level}>
           <div className="row between">
             <div className="lvl"><Alert />{t(top.level)}</div>
-            {top.level === 'HIGH' && <span className="pill" style={{ background: 'rgba(255,255,255,.18)', color: '#fff' }}>{lang === 'mr' ? 'आजच करा' : 'Act today'}</span>}
+            {top.level === 'HIGH' && <span className="pill" style={{ background: 'rgba(255,255,255,.18)', color: '#fff' }}>{t('actToday')}</span>}
           </div>
           <div className="pest">{pick(top.pest)}</div>
           <hr />
@@ -50,6 +56,7 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
             <div className="sub" style={{ marginTop: 0 }}>{t('doThis')}</div>
             <div style={{ fontSize: 15, marginTop: 4 }}>{pick(top.action)}</div>
           </div>
+          <div style={{ marginTop: 10 }}><Speak light text={[pick(top.pest), t(top.level), pick(top.trigger), pick(top.action)].join('. ')} /></div>
         </section>
       )}
 
@@ -66,7 +73,7 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
             <button className="btn-line btn-sage" disabled={count === ''}
               onClick={() => { addTrap(Math.max(0, parseInt(count, 10) || 0)); setCount(''); }}>{t('addCount')}</button>
             <button className="btn-line btn-sm" onClick={fillExample} title="Fills 7 nights of example counts">
-              {lang === 'mr' ? 'उदाहरण' : 'Demo data'}</button>
+              {t('demoData')}</button>
           </div>
         </section>
       )}
@@ -87,13 +94,29 @@ export default function Home({ farm, myCases, onFarm, goScan }) {
         </section>
       ))}
 
+      {lastReading && (
+        <section className="card-light">
+          <div className="row between">
+            <div className="section-h">{t('sensorTitle')}</div>
+            {lastReading.device === 'simulator' && <span className="pill pill-neutral">{t('simulated')}</span>}
+          </div>
+          <div className="kv">
+            <div><b>{wet} h</b><span>{t('leafWet24')}</span></div>
+            <div><b>{lastReading.soilMoisture}%</b><span>{t('soilMoisture')}</span></div>
+            <div><b>{lastReading.tempC}°</b><span>{t('airTemp')}</span></div>
+            <div><b>{lastReading.rh}%</b><span>{t('humidity')}</span></div>
+          </div>
+          <div className="small muted" style={{ marginTop: 6 }}>{t('lastReading', { t: new Date(lastReading.at).toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' }) })}</div>
+        </section>
+      )}
+
       {weather && (
         <section className="card-light">
           <div className="section-h">{t('forecast')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, textAlign: 'center', fontSize: 12 }}>
             {weather.days.map(d => (
               <div key={d.date}>
-                <div className="muted">{new Date(d.date).toLocaleDateString(lang === 'mr' ? 'mr-IN' : 'en-IN', { weekday: 'short' })}</div>
+                <div className="muted">{new Date(d.date).toLocaleDateString(LOCALE[lang], { weekday: 'short' })}</div>
                 <div style={{ fontWeight: 700 }}>{Math.round(d.tMax)}°</div>
                 <div>💧{d.rhMean}%</div>
                 <div className="muted">{d.rain.toFixed(1)} mm</div>

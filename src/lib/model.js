@@ -34,7 +34,7 @@ async function doLoad(key) {
     if (width !== labels.length) {
       throw new Error(`class_names.json has ${labels.length} labels but the model has ${width} outputs`);
     }
-    return { demo: false, crop: key, labels, size: SIZE, model, backend: tf.getBackend() };
+    return { demo: false, crop: key, labels, size: SIZE, model, head: await findHead(key), backend: tf.getBackend() };
   } catch (e) {
     console.warn(`Model for ${key} not loaded, using DEMO predictor:`, e.message);
     loaded.delete(key); // try again next time, e.g. once the phone is back online
@@ -64,6 +64,56 @@ export async function classify(m, canvas, sev, demoLabels) {
     return m.model.predict(img.expandDims(0)).dataSync();
   });
   return m.labels.map((label, i) => ({ label, p: probs[i] })).sort((a, b) => b.p - a.p);
+}
+
+// ---------- where the model looked (class activation map) ----------
+// The models end MobileNetV2 feature maps (7×7×1280) → global average pool → one
+// dense layer. For that head, Grad-CAM reduces exactly to a class activation map
+// (Zhou et al. 2016): weight each feature map by the dense weight of the predicted
+// class and sum. No gradients needed, so it is cheap on a phone.
+async function findHead(key) {
+  try {
+    const nodes = (await (await fetch(`/model/${key}/model.json`)).json()).modelTopology.node;
+    const pool = nodes.find(n => n.op === 'Mean');
+    const dense = nodes.find(n => n.op === '_FusedMatMul' || n.op === 'MatMul');
+    return pool && dense ? { features: pool.input[0], kernel: dense.input[1] } : null;
+  } catch { return null; }
+}
+
+// Returns a JPEG data URL of the photo with the regions that drove `label` warmed
+// up, or null when there is no real model (demo mode) or the head isn't recognised.
+export function explain(m, canvas, img, label, width = 320) {
+  const k = m.demo || !m.head ? -1 : m.labels.indexOf(label);
+  if (k < 0) return null;
+  const w = width, h = Math.round(width * (img.naturalHeight || img.height) / (img.naturalWidth || img.width));
+  const heat = tf.tidy(() => {
+    const x = tf.browser.fromPixels(canvas).toFloat().expandDims(0);
+    const maps = m.model.execute(x, m.head.features);            // [1, 7, 7, 1280]
+    const weights = m.model.weights[m.head.kernel][0];            // [1280, classes]
+    const n = maps.shape[3];
+    const cam = maps.reshape([-1, n]).matMul(weights.slice([0, k], [n, 1]))
+      .reshape([1, maps.shape[1], maps.shape[2], 1]).relu();
+    // The model saw the whole photo squashed, so the 7×7 grid maps onto the full
+    // frame and can be stretched back to the photo's own shape.
+    return tf.image.resizeBilinear(cam.div(cam.max().add(1e-6)), [h, w]).dataSync();
+  });
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const px = ctx.getImageData(0, 0, w, h);
+  for (let i = 0; i < w * h; i++) {
+    const v = heat[i];
+    // Dim what the model ignored and warm what drove the call, with a smooth ramp
+    // so the overlay has no hard edges.
+    const dim = 0.5 + 0.5 * Math.min(1, v / 0.4);
+    const a = Math.max(0, Math.min(0.7, (v - 0.3) * 1.1));
+    for (let ch = 0; ch < 3; ch++) px.data[i * 4 + ch] *= dim;
+    px.data[i * 4] = px.data[i * 4] * (1 - a) + 235 * a;
+    px.data[i * 4 + 1] = px.data[i * 4 + 1] * (1 - a) + (120 - 90 * v) * a;
+    px.data[i * 4 + 2] = px.data[i * 4 + 2] * (1 - a) + 30 * a;
+  }
+  ctx.putImageData(px, 0, 0);
+  return c.toDataURL('image/jpeg', 0.7);
 }
 
 // Accept "Bacterial blight", "bacterial-blight" etc. from a label file.

@@ -41,33 +41,49 @@ service cloud.firestore {
     }
 
     // What other farmers may see: one anonymous report per case, with no uid,
-    // photo or location beyond the taluka (crop is included so a farmer is only
-    // warned about outbreaks on their own crop). The "outbreaks near you" alert reads
-    // these instead of raw cases.
+    // photo, phone or exact location (crop is included so a farmer is only warned
+    // about outbreaks on their own crop). The "outbreaks near you" alert and map
+    // read these instead of raw cases.
     match /reports/{caseId} {
       allow read: if signedIn();
 
-      // A farmer may only publish a report for their own case, and it must
-      // mirror that case exactly, so a report can't claim an expert
-      // confirmation the case doesn't have. getAfter() sees the case as it
-      // will be once the batch that writes both lands.
+      // A farmer may only publish a report for their own case, only while they
+      // consent to sharing (DPDP: opt-in), and it must mirror that case exactly,
+      // so a report can't claim an expert confirmation the case doesn't have.
+      // getAfter() sees the case as it will be once the batch that writes both lands.
       function caseAfter() {
         return getAfter(/databases/$(database)/documents/cases/$(caseId)).data;
       }
+      // The optional fields (see reportOf() in src/lib/store.js) may be left out,
+      // but when present must be derived from the case: the day, not the time;
+      // the ~5 km grid cell (1/20 degree), not the location; whole numbers for
+      // severity and acres.
+      function has(r, k) { return k in r; }
       function mirrorsOwnCase() {
         let c = caseAfter();
         let r = request.resource.data;
         return c.uid == request.auth.uid
-          && r.keys().hasOnly(['id', 'taluka', 'crop', 'label', 'status', 'confidence', 'createdAt'])
+          && c.share == true
+          && r.keys().hasOnly(['id', 'taluka', 'crop', 'label', 'status', 'confidence', 'createdAt',
+                               'cy', 'cx', 'sev', 'acres', 'treated', 'improved'])
           && r.id == caseId
           && r.taluka == c.taluka
           && r.crop == c.crop
           && r.label == c.label
           && r.status == c.status
-          && r.confidence == c.confidence;
+          && r.confidence == c.confidence
+          && (!has(r, 'createdAt') || r.createdAt == c.createdAt - c.createdAt % 86400000)
+          && (!has(r, 'cy') || r.cy == math.round(c.lat * 20))
+          && (!has(r, 'cx') || r.cx == math.round(c.lon * 20))
+          && (!has(r, 'sev') || r.sev == math.round(c.sevIndex))
+          && (!has(r, 'acres') || r.acres == math.round(c.acres))
+          && (!has(r, 'treated') || r.treated == c.prevTreatment)
+          && (!has(r, 'improved') || r.improved == c.improved);
       }
       allow create, update: if isStaff() || (signedIn() && mirrorsOwnCase());
-      allow delete: if isStaff();
+      // Consent is revocable: the farmer can take down the reports of their own cases.
+      allow delete: if isStaff() || (signedIn()
+        && get(/databases/$(database)/documents/cases/$(caseId)).data.uid == request.auth.uid);
     }
 
     match /farms/{uid} {

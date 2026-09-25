@@ -1,0 +1,11 @@
+{
+  "name": "fasalrakshak-inference",
+  "private": true,
+  "type": "module",
+  "description": "Server-side re-verification of scan photos with the full-precision crop models",
+  "scripts": { "start": "node index.mjs" },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
+    "jpeg-js": "^0.4.4"
+  }
+}

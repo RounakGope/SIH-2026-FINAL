@@ -6,13 +6,17 @@ and a new model is a file copy, not a code change.
 
 ## 1. Where the files go
 
-One folder per crop, named after the crop in lowercase:
+Drop the ML team's float32 export, exactly as delivered, into `ml/models/<crop>/`,
+then run `node scripts/quantize-models.mjs`. It writes the float16 copy the app serves
+into `public/model/<crop>/` (2× smaller; predictions within 0.3 points of float32 on
+the demo photos — per-tensor uint8 was tried and rejected: it flipped 7 of 16 photos).
+
+What the app serves, one folder per crop, named after the crop in lowercase:
 
 ```
 public/model/<crop>/model.json
-public/model/<crop>/group1-shard1of3.bin   (every shard model.json lists)
-public/model/<crop>/group1-shard2of3.bin
-public/model/<crop>/group1-shard3of3.bin
+public/model/<crop>/group1-shard1of2.bin   (every shard model.json lists)
+public/model/<crop>/group1-shard2of2.bin
 public/model/<crop>/class_names.json
 public/model/ATTRIBUTION.md                (dataset credits; ships with the models)
 ```
@@ -30,7 +34,11 @@ Crops the app knows today: `cotton`, `soybean`, `chickpea`, `sugarcane`
 | **Labels** | `class_names.json`: a JSON array, index *i* = output unit *i* |
 
 The app feeds the model the **whole photo squashed to 224×224** (no centre crop), the same
-way `image_dataset_from_directory` and `predict.py` resize training images.
+way `image_dataset_from_directory` and `predict.py` resize training images. The browser
+does that downscale on a canvas; Chrome filters a very large photo slightly differently
+when the tab is hidden (software) than when it is visible (GPU), which can move a
+borderline confidence by a few points. On a phone in use the page is visible, so results
+are consistent.
 
 ## 3. Class names
 
@@ -58,9 +66,9 @@ and a diagnosis.
 
 ## 5. Caching and updates
 
-Models are not in the install-time cache (4 crops ≈ 36 MB). The app loads the farmer's own crop
+Models are not in the install-time cache (4 crops ≈ 18 MB). The app loads the farmer's own crop
 model when it opens, and the service worker keeps it for offline use (`vite.config.js`,
-cache `models-v1`). **When you replace model files, bump that cache name** (`models-v2`), or
+cache `models-v2`). **When you replace model files, bump that cache name** (`models-v3`), or
 phones that already have the old files keep using them.
 
 ## 6. How the 24 September delivery checked out
