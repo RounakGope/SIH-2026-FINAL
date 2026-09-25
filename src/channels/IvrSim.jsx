@@ -56,9 +56,9 @@ export default function IvrSim() {
       const top = res.groups[0];
       const name = top ? (top.info.name[lang] || top.info.name.en) : null;
       go('done', top
-        ? { en: `${talukaName(taluka.name, 'en')}: ${name} on ${top.farms} farms in the last 14 days. Check your ${cropName(crop, 'en')} this week.`,
-            mr: `${talukaName(taluka.name, 'mr')}: गेल्या 14 दिवसांत ${top.farms} शेतांत ${name}. या आठवड्यात ${cropName(crop, 'mr')} तपासा.`,
-            hi: `${talukaName(taluka.name, 'hi')}: पिछले 14 दिनों में ${top.farms} खेतों में ${name}। इस हफ़्ते ${cropName(crop, 'hi')} जाँचें।` }[lang]
+        ? { en: `${talukaName(taluka.name, 'en')}: ${name} on ${top.farms === 1 ? '1 farm' : top.farms + ' farms'} in the last 14 days. Check your ${cropName(crop, 'en')} this week.`,
+            mr: `${talukaName(taluka.name, 'mr')}: गेल्या 14 दिवसांत ${top.farms === 1 ? '1 शेतात' : top.farms + ' शेतांत'} ${name}. या आठवड्यात ${cropName(crop, 'mr')} तपासा.`,
+            hi: `${talukaName(taluka.name, 'hi')}: पिछले 14 दिनों में ${top.farms === 1 ? '1 खेत में' : top.farms + ' खेतों में'} ${name}। इस हफ़्ते ${cropName(crop, 'hi')} जाँचें।` }[lang]
         : { en: 'No confirmed outbreaks in your taluka in the last 14 days.', mr: 'गेल्या 14 दिवसांत तुमच्या तालुक्यात खात्रीशीर प्रादुर्भाव नाही.', hi: 'पिछले 14 दिनों में आपके तालुके में कोई पुष्ट प्रकोप नहीं।' }[lang]);
     } else if (step === 'confirm' && n === 1) {
       try {

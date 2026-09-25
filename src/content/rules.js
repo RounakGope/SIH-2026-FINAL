@@ -85,6 +85,13 @@ function leafSpot(weather, wet) {
   // Example thresholds, to be tuned by SAU/KVK: 3 wet days in the forecast, or a
   // field sensor showing the leaves wet 10 h or more in the last 24 h.
   const level = wetDays >= 3 || (wet != null && wet >= 10) ? 'MEDIUM' : 'LOW';
+  // Say plainly that this counts forecast days, so it can't be read as "humidity is
+  // above 85% now"; and don't describe a forecast that hasn't loaded.
+  const forecast = !weather
+    ? { en: 'Forecast not loaded yet.', mr: 'हवामान अंदाज अजून आलेला नाही.', hi: 'मौसम का पूर्वानुमान अभी नहीं आया।' }
+    : wetDays === 0
+      ? { en: 'No day in the 5-day forecast is both humid (over 85%) and rainy.', mr: 'पुढील 5 दिवसांत 85% पेक्षा जास्त आर्द्रता व पाऊस असलेला एकही दिवस नाही.', hi: 'अगले 5 दिनों में ऐसा कोई दिन नहीं जिसमें नमी 85% से ज़्यादा हो और बारिश भी हो।' }
+      : { en: `${wetDays} of the next 5 days ${wetDays === 1 ? 'is' : 'are'} forecast to be humid (over 85%) and rainy.`, mr: `पुढील 5 पैकी ${wetDays} दिवस 85% पेक्षा जास्त आर्द्रता व पाऊस असण्याचा अंदाज.`, hi: `अगले 5 में से ${wetDays} दिन 85% से ज़्यादा नमी और बारिश का अनुमान।` };
   const sensor = wet == null ? { en: '', mr: '', hi: '' }
     : { en: ` Field sensor: leaves wet ${wet} h in the last 24 h.`, mr: ` शेतातील सेन्सर: गेल्या 24 तासांत पाने ${wet} तास ओली.`, hi: ` खेत का सेंसर: पिछले 24 घंटे में पत्तियाँ ${wet} घंटे गीली।` };
   return {
@@ -92,9 +99,9 @@ function leafSpot(weather, wet) {
     pest: { en: 'Leaf spot (weather)', mr: 'पानावरील ठिपके (हवामान)', hi: 'पत्ती धब्बा (मौसम)' },
     level,
     trigger: {
-      en: `Humidity above 85% with rain on ${wetDays} of the next 5 days.` + sensor.en,
-      mr: `पुढील 5 पैकी ${wetDays} दिवस 85% पेक्षा जास्त आर्द्रता व पाऊस.` + sensor.mr,
-      hi: `अगले 5 में से ${wetDays} दिन 85% से ज़्यादा नमी और बारिश।` + sensor.hi
+      en: forecast.en + sensor.en,
+      mr: forecast.mr + sensor.mr,
+      hi: forecast.hi + sensor.hi
     },
     action: level === 'MEDIUM'
       ? { en: 'Avoid late irrigation; do a 10-plant scan in 2 days.', mr: 'उशिरा पाणी देणे टाळा; 2 दिवसांत 10 झाडांचे स्कॅन करा.', hi: 'देर शाम सिंचाई न करें; 2 दिन में 10 पौधों का स्कैन करें।' }
@@ -126,7 +133,7 @@ function nearby(talukaCases, farm, myCaseIds) {
     pest: top ? name : { en: 'Outbreaks near you', mr: 'जवळपास प्रादुर्भाव', hi: 'आपके आसपास प्रकोप' },
     level,
     trigger: top
-      ? { en: `${n} farms in ${taluka} reported ${name.en.toLowerCase()} in the last 14 days.`, mr: `${tMr} मध्ये गेल्या 14 दिवसांत ${n} शेतांत ${name.mr} नोंद.`, hi: `${tHi} में पिछले 14 दिनों में ${n} खेतों में ${name.hi || name.en} दर्ज।` }
+      ? { en: `${n === 1 ? '1 farm' : n + ' farms'} in ${taluka} reported ${name.en.toLowerCase()} in the last 14 days.`, mr: `${tMr} मध्ये गेल्या 14 दिवसांत ${n === 1 ? '1 शेतात' : n + ' शेतांत'} ${name.mr} नोंद.`, hi: `${tHi} में पिछले 14 दिनों में ${n === 1 ? '1 खेत में' : n + ' खेतों में'} ${name.hi || name.en} दर्ज।` }
       : { en: `No confirmed reports in ${taluka} in the last 14 days.`, mr: `${tMr} मध्ये गेल्या 14 दिवसांत नोंद नाही.`, hi: `${tHi} में पिछले 14 दिनों में कोई पुष्ट रिपोर्ट नहीं।` },
     action: top
       ? { en: 'Scan your field this week, before it spreads to you.', mr: 'पसरण्यापूर्वी या आठवड्यात तुमच्या शेताचे स्कॅन करा.', hi: 'फैलने से पहले इसी हफ़्ते अपने खेत का स्कैन करें।' }
