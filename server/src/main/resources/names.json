@@ -1,0 +1,220 @@
+{
+ "diseases": {
+  "Cotton|healthy": {
+   "en": "Healthy leaf",
+   "mr": "निरोगी पान",
+   "hi": "स्वस्थ पत्ती",
+   "diseased": false
+  },
+  "Cotton|bacterial_blight": {
+   "en": "Bacterial blight",
+   "mr": "जिवाणूजन्य करपा",
+   "hi": "जीवाणु झुलसा",
+   "diseased": true
+  },
+  "Cotton|leaf_curl": {
+   "en": "Leaf curl (suspected virus)",
+   "mr": "पाने गुंडाळणे (विषाणूजन्य संशय)",
+   "hi": "पत्ती मरोड़ (विषाणु की आशंका)",
+   "diseased": true
+  },
+  "Cotton|jassid_damage": {
+   "en": "Jassid (leafhopper) damage",
+   "mr": "तुडतुड्यांचा प्रादुर्भाव",
+   "hi": "जैसिड (हरा तेला) का नुकसान",
+   "diseased": true
+  },
+  "Cotton|other": {
+   "en": "Could not recognise this photo",
+   "mr": "फोटो ओळखता आला नाही",
+   "hi": "यह फ़ोटो पहचान नहीं पाए",
+   "diseased": false
+  },
+  "Soybean|healthy": {
+   "en": "Healthy",
+   "mr": "निरोगी",
+   "hi": "स्वस्थ",
+   "diseased": false
+  },
+  "Soybean|bacterial_blight": {
+   "en": "Bacterial blight",
+   "mr": "जिवाणूजन्य करपा",
+   "hi": "जीवाणु झुलसा",
+   "diseased": true
+  },
+  "Soybean|cercospora_leaf_blight": {
+   "en": "Cercospora leaf blight",
+   "mr": "सर्कोस्पोरा पानांवरील करपा",
+   "hi": "सर्कोस्पोरा पत्ती झुलसा",
+   "diseased": true
+  },
+  "Soybean|rust": {
+   "en": "Rust",
+   "mr": "तांबेरा",
+   "hi": "गेरुआ (रस्ट)",
+   "diseased": true
+  },
+  "Soybean|sudden_death_syndrome": {
+   "en": "Sudden death syndrome (suspected)",
+   "mr": "अचानक मर (संशयित)",
+   "hi": "अचानक मृत्यु रोग (आशंका)",
+   "diseased": true
+  },
+  "Soybean|other": {
+   "en": "Could not recognise this photo",
+   "mr": "फोटो ओळखता आला नाही",
+   "hi": "यह फ़ोटो पहचान नहीं पाए",
+   "diseased": false
+  },
+  "Sugarcane|healthy": {
+   "en": "Healthy",
+   "mr": "निरोगी",
+   "hi": "स्वस्थ",
+   "diseased": false
+  },
+  "Sugarcane|red_rot": {
+   "en": "Red rot",
+   "mr": "लाल कूज",
+   "hi": "लाल सड़न",
+   "diseased": true
+  },
+  "Sugarcane|rust": {
+   "en": "Rust",
+   "mr": "तांबेरा",
+   "hi": "गेरुआ (रस्ट)",
+   "diseased": true
+  },
+  "Sugarcane|mosaic": {
+   "en": "Mosaic (virus)",
+   "mr": "मोझॅक (विषाणूजन्य)",
+   "hi": "मोज़ेक (विषाणु)",
+   "diseased": true
+  },
+  "Sugarcane|yellow_leaf": {
+   "en": "Yellow leaf disease (virus)",
+   "mr": "पिवळ्या पानांचा रोग (विषाणूजन्य)",
+   "hi": "पीली पत्ती रोग (विषाणु)",
+   "diseased": true
+  },
+  "Sugarcane|other": {
+   "en": "Could not recognise this photo",
+   "mr": "फोटो ओळखता आला नाही",
+   "hi": "यह फ़ोटो पहचान नहीं पाए",
+   "diseased": false
+  },
+  "Chickpea|healthy": {
+   "en": "Healthy",
+   "mr": "निरोगी",
+   "hi": "स्वस्थ",
+   "diseased": false
+  },
+  "Chickpea|wilt_moderate": {
+   "en": "Fusarium wilt (moderate)",
+   "mr": "मर रोग (मध्यम)",
+   "hi": "उकठा रोग (मध्यम)",
+   "diseased": true
+  },
+  "Chickpea|wilt_severe": {
+   "en": "Fusarium wilt (severe)",
+   "mr": "मर रोग (तीव्र)",
+   "hi": "उकठा रोग (गंभीर)",
+   "diseased": true
+  },
+  "Chickpea|other": {
+   "en": "Could not recognise this photo",
+   "mr": "फोटो ओळखता आला नाही",
+   "hi": "यह फ़ोटो पहचान नहीं पाए",
+   "diseased": false
+  }
+ },
+ "crops": {
+  "Cotton": {
+   "en": "Cotton",
+   "mr": "कापूस",
+   "hi": "कपास"
+  },
+  "Soybean": {
+   "en": "Soybean",
+   "mr": "सोयाबीन",
+   "hi": "सोयाबीन"
+  },
+  "Chickpea": {
+   "en": "Chickpea",
+   "mr": "हरभरा",
+   "hi": "चना"
+  },
+  "Sugarcane": {
+   "en": "Sugarcane",
+   "mr": "ऊस",
+   "hi": "गन्ना"
+  },
+  "Tur": {
+   "en": "Tur",
+   "mr": "तूर",
+   "hi": "अरहर"
+  },
+  "Grape": {
+   "en": "Grape",
+   "mr": "द्राक्ष",
+   "hi": "अंगूर"
+  }
+ },
+ "talukas": {
+  "Wardha": {
+   "en": "Wardha",
+   "mr": "वर्धा",
+   "hi": "वर्धा",
+   "lat": 20.745,
+   "lon": 78.602
+  },
+  "Deoli": {
+   "en": "Deoli",
+   "mr": "देवळी",
+   "hi": "देवली",
+   "lat": 20.648,
+   "lon": 78.481
+  },
+  "Seloo": {
+   "en": "Seloo",
+   "mr": "सेलू",
+   "hi": "सेलू",
+   "lat": 20.846,
+   "lon": 78.715
+  },
+  "Arvi": {
+   "en": "Arvi",
+   "mr": "आर्वी",
+   "hi": "आर्वी",
+   "lat": 20.99,
+   "lon": 78.227
+  },
+  "Ashti": {
+   "en": "Ashti",
+   "mr": "आष्टी",
+   "hi": "आष्टी",
+   "lat": 21.203,
+   "lon": 78.186
+  },
+  "Karanja": {
+   "en": "Karanja",
+   "mr": "कारंजा",
+   "hi": "कारंजा",
+   "lat": 21.123,
+   "lon": 78.4
+  },
+  "Hinganghat": {
+   "en": "Hinganghat",
+   "mr": "हिंगणघाट",
+   "hi": "हिंगणघाट",
+   "lat": 20.548,
+   "lon": 78.839
+  },
+  "Samudrapur": {
+   "en": "Samudrapur",
+   "mr": "समुद्रपूर",
+   "hi": "समुद्रपुर",
+   "lat": 20.65,
+   "lon": 78.97
+  }
+ }
+}
