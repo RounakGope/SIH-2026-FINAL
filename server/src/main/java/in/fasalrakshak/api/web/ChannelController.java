@@ -6,43 +6,36 @@ import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import in.fasalrakshak.api.domain.PlotRepo;
 import in.fasalrakshak.api.domain.Registration;
 import in.fasalrakshak.api.domain.RegistrationRepo;
-import in.fasalrakshak.api.domain.SensorReading;
-import in.fasalrakshak.api.domain.SensorRepo;
 import in.fasalrakshak.api.domain.SmsMessage;
 import in.fasalrakshak.api.service.BhashiniService;
 import in.fasalrakshak.api.service.CaseService;
 import in.fasalrakshak.api.service.InferenceService;
 import in.fasalrakshak.api.service.SmsService;
 
-// The non-app channels: SMS gateway, IVR line, field sensors, speech; and health.
+// The non-app channels: SMS gateway, IVR line, speech; and health.
 @RestController
 public class ChannelController {
 	private final SmsService sms;
 	private final CaseService cases;
 	private final RegistrationRepo registrations;
-	private final SensorRepo sensors;
-	private final PlotRepo plots;
 	private final BhashiniService bhashini;
 	private final InferenceService inference;
 	private final boolean ivrSimulator;
-	private final String ivrKey, sensorKey;
+	private final String ivrKey;
 
-	public ChannelController(SmsService sms, CaseService cases, RegistrationRepo registrations, SensorRepo sensors, PlotRepo plots,
+	public ChannelController(SmsService sms, CaseService cases, RegistrationRepo registrations,
 		BhashiniService bhashini, InferenceService inference, @Value("${app.ivr.simulator}") boolean ivrSimulator,
-		@Value("${app.ivr.key:}") String ivrKey, @Value("${app.sensor-key}") String sensorKey) {
-		this.sms = sms; this.cases = cases; this.registrations = registrations; this.sensors = sensors; this.plots = plots;
-		this.bhashini = bhashini; this.inference = inference; this.ivrSimulator = ivrSimulator; this.ivrKey = ivrKey; this.sensorKey = sensorKey;
+		@Value("${app.ivr.key:}") String ivrKey) {
+		this.sms = sms; this.cases = cases; this.registrations = registrations;
+		this.bhashini = bhashini; this.inference = inference; this.ivrSimulator = ivrSimulator; this.ivrKey = ivrKey;
 	}
 
 	// ---------- SMS ----------
@@ -82,29 +75,6 @@ public class ChannelController {
 		reg.via = r.getOrDefault("via", "ivr"); reg.at = System.currentTimeMillis();
 		registrations.save(reg);
 		return Map.of("registered", reg.phone);
-	}
-
-	// ---------- field sensors ----------
-	@PostMapping("/api/sensors/readings")
-	public Map<String, Object> reading(@RequestBody Map<String, Object> r, @RequestHeader(value = "X-Device-Key", required = false) String key) {
-		if (!sensorKey.equals(key)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "device key");
-		SensorReading s = new SensorReading();
-		s.plotId = CaseService.str(r.get("plotId"));
-		Double at = CaseService.num(r.get("at")); s.at = at == null ? System.currentTimeMillis() : at.longValue();
-		Double lw = CaseService.num(r.get("leafWetness")); s.leafWetness = lw == null ? 0 : Math.max(0, Math.min(1, lw));
-		s.soilMoisture = CaseService.num(r.get("soilMoisture")); s.tempC = CaseService.num(r.get("tempC")); s.rh = CaseService.num(r.get("rh"));
-		s.device = CaseService.str(r.getOrDefault("device", "sensor"));
-		Double step = CaseService.num(r.get("stepMin")); s.stepMin = step == null ? 5 : step.intValue();
-		sensors.save(s);
-		return Map.of("ok", true);
-	}
-
-	@GetMapping("/api/sensors/{plotId}")
-	public List<SensorReading> readings(@PathVariable String plotId, Authentication who) {
-		boolean staff = who.getAuthorities().stream().anyMatch(a -> !a.getAuthority().equals("ROLE_FARMER"));
-		if (!staff && plots.findById(plotId).map(p -> !who.getName().equals(p.uid)).orElse(false))
-			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "not your plot");
-		return sensors.findByPlotIdAndAtGreaterThanEqualOrderByAtAsc(plotId, System.currentTimeMillis() - 86_400_000L);
 	}
 
 	// ---------- speech (Bhashini) ----------

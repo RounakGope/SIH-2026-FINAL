@@ -1,20 +1,39 @@
 import { useState } from 'react';
-import { useLang } from '../lib/i18n';
+import { useLang, LOCALE } from '../lib/i18n';
 import { CROPS, cropDay, stageFor, stageName, cropName } from '../content/rules';
+import { AREA_UNITS, toAcres } from '../content/area';
 import { TALUKAS, DEFAULT_LOCATION, nearestTaluka } from '../content/talukas';
 import { Pin } from './Icons';
-import { saveSettings, removePlot, getPlots } from '../lib/store';
 
-export default function Setup({ farm, settings = {}, onSave, onNewPlot }) {
+const pad = n => String(n).padStart(2, '0');
+const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+
+export default function Setup({ farm, onSave }) {
   const { t, lang } = useLang();
-  const [f, setF] = useState(() => farm || {
-    crop: 'Cotton', variety: CROPS.Cotton.variety, sowDate: defaultSowDate(), acres: 2,
-    lat: DEFAULT_LOCATION.lat, lon: DEFAULT_LOCATION.lon, taluka: 'Wardha', traps: []
-  });
+  // Form values: the sowing month as "YYYY-MM" and the farm size as typed.
+  const [f, setF] = useState(() => farm
+    ? { ...farm, sowDate: (farm.sowDate || thisMonth()).slice(0, 7), area: String(farm.area ?? farm.acres ?? ''), areaUnit: farm.areaUnit || 'acre' }
+    : { crop: 'Cotton', sowDate: thisMonth(), area: '', areaUnit: 'acre', lat: DEFAULT_LOCATION.lat, lon: DEFAULT_LOCATION.lon, taluka: 'Wardha', traps: [] });
   const [gpsMsg, setGpsMsg] = useState('');
   const set = patch => setF(prev => ({ ...prev, ...patch }));
   const day = cropDay(f.sowDate);
   const stage = stageFor(day, f.crop);
+
+  // Sowing month and year: this year and the two before (sugarcane stays in the
+  // field up to 18 months); no future months.
+  const now = new Date();
+  const [sy, sm] = f.sowDate.split('-').map(Number);
+  const years = [0, 1, 2].map(i => now.getFullYear() - i);
+  const monthNames = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleDateString(LOCALE[lang], { month: 'long' }));
+  const setSow = (y, m) => set({ sowDate: `${y}-${pad(y === now.getFullYear() ? Math.min(m, now.getMonth() + 1) : m)}` });
+
+  const area = parseFloat(f.area);
+  const areaOk = area > 0;
+  const save = () => {
+    // Variety, the sensor simulator and the assistant-mode farmer name are no longer asked for.
+    const { variety, sensorSim, farmerName, ...plot } = f;
+    onSave({ ...plot, area, acres: toAcres(area, f.areaUnit), lang, traps: f.traps || [] });
+  };
 
   const gps = () => {
     if (!navigator.geolocation) return setGpsMsg('GPS not available');
@@ -42,8 +61,7 @@ export default function Setup({ farm, settings = {}, onSave, onNewPlot }) {
         <div className="label">{t('crop')}</div>
         <div className="choice-grid">
           {Object.entries(CROPS).map(([name, c]) => (
-            <button key={name} className={'choice' + (f.crop === name ? ' on' : '')}
-              onClick={() => set({ crop: name, variety: c.variety })}>
+            <button key={name} className={'choice' + (f.crop === name ? ' on' : '')} onClick={() => set({ crop: name })}>
               <span>{c.icon}</span>{cropName(name, lang)}
             </button>
           ))}
@@ -51,24 +69,30 @@ export default function Setup({ farm, settings = {}, onSave, onNewPlot }) {
       </div>
 
       <div>
-        <div className="label">{t('variety')}</div>
-        <input className="input" value={f.variety} onChange={e => set({ variety: e.target.value })} />
-      </div>
-
-      <div>
         <div className="label">{t('sowingDate')}</div>
-        <input className="input" type="date" value={f.sowDate} onChange={e => set({ sowDate: e.target.value })} />
+        <div className="row">
+          <select className="input" aria-label={t('sowMonth')} value={sm} onChange={e => setSow(sy, +e.target.value)}>
+            {monthNames.map((name, i) => (
+              <option key={i} value={i + 1} disabled={sy === now.getFullYear() && i > now.getMonth()}>{name}</option>
+            ))}
+          </select>
+          <select className="input" aria-label={t('sowYear')} value={sy} onChange={e => setSow(+e.target.value, sm)} style={{ flex: '0 0 116px' }}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
       </div>
-      {day && (
+      {day != null && (
         <div className="info-strip">⏱ {t('day')} {day} · {stageName(stage, lang)}</div>
       )}
 
       <div>
         <div className="label">{t('farmSize')}</div>
-        <div className="stepper">
-          <button onClick={() => set({ acres: Math.max(1, f.acres - 1) })}>−</button>
-          <div className="val">{f.acres}<small>{t('acres')}</small></div>
-          <button onClick={() => set({ acres: Math.min(50, f.acres + 1) })}>+</button>
+        <div className="row">
+          <input className="input" type="number" inputMode="decimal" min="0" step="any" placeholder={t('farmSizePh')}
+            aria-label={t('farmSize')} value={f.area} onChange={e => set({ area: e.target.value })} />
+          <select className="input" aria-label={t('areaUnit')} value={f.areaUnit} onChange={e => set({ areaUnit: e.target.value })} style={{ flex: '0 0 150px' }}>
+            {Object.entries(AREA_UNITS).map(([key, u]) => <option key={key} value={key}>{u[lang] || u.en}</option>)}
+          </select>
         </div>
       </div>
 
@@ -85,13 +109,6 @@ export default function Setup({ farm, settings = {}, onSave, onNewPlot }) {
         </div>
         {gpsMsg && <div className="small muted" style={{ marginTop: 6 }}>{gpsMsg}</div>}
       </div>
-
-      {settings.assistant && (
-        <div>
-          <div className="label">{t('farmerName')}</div>
-          <input className="input" value={f.farmerName || ''} onChange={e => set({ farmerName: e.target.value })} />
-        </div>
-      )}
 
       <div>
         <div className="label">{t('phone')}</div>
@@ -112,32 +129,8 @@ export default function Setup({ farm, settings = {}, onSave, onNewPlot }) {
         </label>
       </div>
 
-      <button className="btn-big" onClick={() => onSave({ ...f, lang, traps: f.traps || [] })}>{t('saveField')}</button>
-
-      <div className="card-light">
-        <div className="section-h">{t('deviceTitle')}</div>
-        <label className="check">
-          <input type="checkbox" checked={!!settings.lowData} onChange={e => saveSettings({ lowData: e.target.checked })} />
-          <span>{t('lowData')}<br /><span className="small muted">{t('lowDataHint')}</span></span>
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={!!settings.assistant} onChange={e => saveSettings({ assistant: e.target.checked })} />
-          <span>{t('assistantMode')}<br /><span className="small muted">{t('assistantHint')}</span></span>
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={!!f.sensorSim} onChange={e => set({ sensorSim: e.target.checked })} />
-          <span>{t('sensorSim')}<br /><span className="small muted">{t('sensorSimHint')}</span></span>
-        </label>
-        {farm?.id && <div className="small muted" style={{ marginTop: 6 }}>{t('sensorCode')}: <code style={{ userSelect: 'all' }}>{farm.id}</code></div>}
-        {settings.assistant && (
-          <div className="row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
-            <button className="btn-line btn-sm" onClick={onNewPlot}>+ {t('addPlot')}</button>
-            {farm && getPlots().length > 1 && (
-              <button className="btn-line btn-sm" onClick={() => removePlot(farm.id)}>{t('removePlot')}</button>
-            )}
-          </div>
-        )}
-      </div>
+      <button className="btn-big" disabled={!areaOk} onClick={save}>{t('saveField')}</button>
+      {!areaOk && <div className="small muted" style={{ marginTop: -8, textAlign: 'center' }}>{t('enterFarmSize')}</div>}
 
       <Credits />
     </main>
@@ -174,9 +167,4 @@ function Credits() {
       </p>
     </details>
   );
-}
-
-function defaultSowDate() {
-  const d = new Date(Date.now() - 68 * 86400000);
-  return d.toISOString().slice(0, 10);
 }

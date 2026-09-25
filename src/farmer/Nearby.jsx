@@ -24,7 +24,8 @@ export default function Nearby({ farm, myCases }) {
   const res = useMemo(() => outbreaksNear(reports, farm, radius, mine), [reports, farm, radius, mine]);
   const sel = res.groups.find(g => g.label === open) || null;
   const radiusLabel = r => r === '5km' ? t('r5km') : r === 'taluka' ? t('rTaluka', { t: talukaName(farm.taluka, lang) }) : t('rDistrict');
-  const cells = (sel ? [sel] : res.groups).flatMap(g => g.cells.map(c => ({ ...c, sev: g.severity })));
+  // One circle per disease per 5 km cell: two diseases can share a cell.
+  const cells = (sel ? [sel] : res.groups).flatMap(g => g.cells.map(c => ({ ...c, label: g.label, sev: g.severity })));
 
   return (
     <main className="content">
@@ -49,7 +50,7 @@ export default function Nearby({ farm, myCases }) {
             <Tooltip>{t('yourField')}</Tooltip>
           </CircleMarker>
           {cells.map(c => (
-            <CircleMarker key={c.cy + ',' + c.cx} center={cellCentre(c.cy, c.cx)} radius={8 + Math.sqrt(c.n) * 5}
+            <CircleMarker key={c.label + ':' + c.cy + ',' + c.cx} center={cellCentre(c.cy, c.cx)} radius={8 + Math.sqrt(c.n) * 5}
               pathOptions={{ color: sevColour(c.sev), fillColor: sevColour(c.sev), fillOpacity: 0.45, weight: 1.5 }}>
               <Tooltip>{farmsN(c.n)}</Tooltip>
             </CircleMarker>

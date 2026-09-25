@@ -61,10 +61,6 @@ button { font: inherit; color: inherit; }
 .choice.on { background: var(--color-accent); color: var(--color-bg); border-color: var(--color-accent); }
 .input { width: 100%; min-height: 50px; border-radius: 999px; border: 1px solid var(--color-divider); background: var(--color-surface); padding: 0 18px; font: inherit; font-size: 15px; color: var(--color-text); }
 select.input { appearance: none; }
-.stepper { display: grid; grid-template-columns: 50px 1fr 50px; gap: 8px; align-items: center; }
-.stepper button { height: 50px; border-radius: 50%; border: 1px solid var(--color-divider); background: transparent; font-size: 22px; cursor: pointer; }
-.stepper .val { text-align: center; background: var(--color-surface); border-radius: 999px; padding: 10px; font-size: 22px; }
-.stepper .val small { font-size: 12px; color: var(--color-neutral-700); margin-left: 6px; }
 .info-strip { display: flex; align-items: center; gap: 8px; background: var(--color-accent-2-100); color: var(--color-accent-2-800); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600; }
 
 /* risk */
@@ -128,7 +124,7 @@ select.input { appearance: none; }
 
 /* tab bar */
 .tabbar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; background: var(--color-bg); border-top: 1px solid var(--color-divider); padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); }
-.tabbar-inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tabbar-inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
 .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 5px; border: 0; border-radius: 20px; background: transparent; cursor: pointer; font-size: 11px; font-weight: 600; color: var(--color-neutral-700); }
 .tab.on { color: var(--color-accent-800); background: var(--color-accent-200); }
 
@@ -205,3 +201,17 @@ select.input { appearance: none; }
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .keypad button { font: inherit; font-size: 22px; font-weight: 600; padding: 14px 0; border-radius: 999px; border: 1.5px solid var(--color-neutral-300); background: var(--color-bg); cursor: pointer; }
 .keypad button:active { background: var(--color-accent-2-100, #e3e6d4); }
+
+/* My Progress: the week's care plan (tick per day) and the money card */
+.rung.care { cursor: pointer; }
+.rung.care input { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--color-accent-2-600); flex: none; }
+.dots { display: flex; gap: 6px; margin-top: 7px; }
+.dots i { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--color-accent-2-500); }
+.dots i.on { background: var(--color-accent-2-500); }
+.dots i.today { outline: 2px solid var(--color-accent-2-300); outline-offset: 1px; }
+.saved-card.money .caps { opacity: .85; letter-spacing: .08em; text-transform: uppercase; }
+.saved-card.money .money-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 10px; }
+.saved-card.money .money-row span { font-size: 13.5px; opacity: .92; }
+.saved-card.money .money-row b { display: inline; font-size: 26px; margin: 0; white-space: nowrap; }
+.saved-card.money .money-yield { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.saved-card.money .money-yield .input { width: 90px; min-height: 40px; padding: 0 12px; text-align: center; flex: none; }

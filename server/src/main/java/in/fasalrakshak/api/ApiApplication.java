@@ -6,7 +6,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 // FasalRakshak API: sync for the farmer PWA, the KVK / officer dashboard, the SMS
-// gateway, the IVR line, field sensors, Bhashini speech and server re-verification.
+// gateway, the IVR line, Bhashini speech and server re-verification.
 @SpringBootApplication
 @EnableScheduling
 @EnableAsync

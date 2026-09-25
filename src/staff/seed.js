@@ -42,7 +42,7 @@ export function makeSeed() {
       const followUp = tier ? { prevTreatment: tier, improved: Math.random() < (tier === 'biological' ? 0.75 : 0.5) } : {};
       out.push({
         id: newId(), seed: true, uid: 'seed-farmer-' + Math.floor(Math.random() * 60),
-        district: DISTRICT, taluka: tk.name, crop: 'Cotton', variety: 'Bt hybrid (BG-II)', acres: 1 + Math.floor(Math.random() * 5),
+        district: DISTRICT, taluka: tk.name, crop: 'Cotton', acres: 1 + Math.floor(Math.random() * 5),
         cropDay: 60 + Math.floor(Math.random() * 30), stage: 'Boll formation',
         lat: +(tk.lat + (Math.random() - 0.5) * 0.12).toFixed(2), lon: +(tk.lon + (Math.random() - 0.5) * 0.12).toFixed(2),
         label, confidence, top3: top3(label, confidence),
@@ -63,7 +63,7 @@ export function makeSeed() {
     const confidence = +(0.42 + Math.random() * 0.2).toFixed(3);
     out.push({
       id: newId(), seed: true, uid: 'seed-farmer-p' + i, district: DISTRICT, taluka: name, crop: 'Cotton',
-      variety: 'Bt hybrid (BG-II)', acres: 2, cropDay: 70, stage: 'Boll formation', lat: tk.lat, lon: tk.lon,
+      acres: 2, cropDay: 70, stage: 'Boll formation', lat: tk.lat, lon: tk.lon,
       label, confidence, top3: top3(label, confidence), leafPct: +(8 + Math.random() * 20).toFixed(1),
       plantsInfected: 3, plantsWalked: 10, sevIndex: 5, photo: null, createdAt, updatedAt: createdAt, modelVersion: 'seed',
       status: 'pending_review', expert: null, phone: '900000000' + i, lang: i % 2 ? 'hi' : 'mr'
