@@ -8,8 +8,26 @@ public class SmsTexts {
 	private final Names names;
 	public SmsTexts(Names names) { this.names = names; }
 
-	public String expertReply(String status, String crop, String label, String lang) {
+	public String expertReply(String status, String crop, String label, String lang, String kind) {
 		String d = names.disease(crop, label, lang);
+		// A voice report's caller may have no smartphone: the expert has called them back.
+		if ("ivr".equals(kind) && !"lab_referred".equals(status)) return switch (lang) {
+			case "mr" -> "KVK तज्ञांचे निदान: " + d + ". फोनवर तज्ञांनी सांगितलेले उपाय करा.";
+			case "hi" -> "KVK विशेषज्ञ का निदान: " + d + "। फ़ोन पर विशेषज्ञ के बताए उपाय करें।";
+			default -> "KVK expert's diagnosis: " + d + ". Follow the steps the expert gave you on the call.";
+		};
+		// A verdict of "healthy" or "can't tell from this photo" has no treatment to open.
+		if (!"lab_referred".equals(status) && !names.diseased(crop, label)) return "other".equals(label)
+			? switch (lang) {
+				case "mr" -> "फोटोवरून KVK तज्ञांना सांगता आले नाही. कृपया स्पष्ट फोटो पाठवा: एकच पान पूर्ण फ्रेममध्ये, सावलीत.";
+				case "hi" -> "फ़ोटो से KVK विशेषज्ञ तय नहीं कर पाए। कृपया साफ़ फ़ोटो भेजें: एक पत्ता पूरे फ़्रेम में, छाँव में।";
+				default -> "KVK expert could not tell from the photo. Please send a clearer one: one leaf filling the frame, in shade.";
+			}
+			: switch (lang) {
+				case "mr" -> "KVK तज्ञांच्या मते पान निरोगी आहे: उपचाराची गरज नाही. पुढच्या आठवड्यात पुन्हा स्कॅन करा.";
+				case "hi" -> "KVK विशेषज्ञ के अनुसार पत्ता स्वस्थ है: इलाज की ज़रूरत नहीं। अगले हफ़्ते फिर स्कैन करें।";
+				default -> "KVK expert says the leaf looks healthy: no treatment needed. Scan again next week.";
+			};
 		return switch (status) {
 			case "confirmed" -> switch (lang) {
 				case "mr" -> "KVK तज्ञांनी खात्री केली: " + d + ". उपायांसाठी फसलरक्षक उघडा.";

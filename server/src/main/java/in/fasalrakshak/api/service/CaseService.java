@@ -162,7 +162,7 @@ public class CaseService {
 		repo.save(e);
 		// The farmer is told by SMS, in their language, if they gave a number.
 		if (e.phone != null) {
-			String text = texts.expertReply(status, e.crop, e.label, str(d.getOrDefault("lang", "mr")));
+			String text = texts.expertReply(status, e.crop, e.label, str(d.getOrDefault("lang", "mr")), e.kind);
 			if (text != null) sms.send(e.phone, text, "expert", e.taluka);
 		}
 		return d;

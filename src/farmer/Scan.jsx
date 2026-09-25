@@ -151,6 +151,10 @@ function Result({ plant, farm, crop, caseId, day, stage, infected, walked, saved
   const { t, pick, lang } = useLang();
   const info = ipmFor(plant.label, crop);
   const unsure = plant.confidence < THRESHOLD || plant.label === 'other';
+  // 'other' can be a confident answer ("not a leaf I know"), so it gets its own reason.
+  const unsureText = plant.label === 'other'
+    ? t('otherBody', { c: cropName(crop, lang) })
+    : t('unsureBody', { t: Math.round(THRESHOLD * 100) });
   const pct = Math.round(plant.confidence * 100);
   const fieldIndex = walked ? (infected / walked) * 100 * (plant.leafPct / 100) : 0;
   const chemOpen = fieldIndex >= CHEM_UNLOCK_INDEX;
@@ -161,7 +165,7 @@ function Result({ plant, farm, crop, caseId, day, stage, infected, walked, saved
       <section className="card">
         <div className="row between">
           <div className="section-h">{t('mostLikely')}</div>
-          <Speak text={[pick(info.name), pick(info.markers), unsure ? t('unsureBody', { t: Math.round(THRESHOLD * 100) }) : info.steps.filter(s => s.tier !== 'chemical').map(s => pick(s.text)).join(' ')].join('. ')} />
+          <Speak text={[pick(info.name), pick(info.markers), unsure ? unsureText : info.steps.filter(s => s.tier !== 'chemical').map(s => pick(s.text)).join(' ')].join('. ')} />
         </div>
         <h3 style={{ fontSize: 21, fontFamily: 'var(--font-heading)', fontWeight: 400 }}>{pick(info.name)}</h3>
         {plant.views === 2 && <div className="small muted">{t('twoViews')}</div>}
@@ -205,7 +209,7 @@ function Result({ plant, farm, crop, caseId, day, stage, infected, walked, saved
       {unsure ? (
         <section className="card-warm">
           <h3>{t('unsureTitle')}</h3>
-          <p className="small" style={{ margin: 0 }}>{t('unsureBody', { t: Math.round(THRESHOLD * 100) })}</p>
+          <p className="small" style={{ margin: 0 }}>{unsureText}</p>
           {savedCase?.status === 'pending_review' && <div className="pill pill-wait" style={{ marginTop: 10 }}><span className="dot" />{t('waitingExpert')}</div>}
         </section>
       ) : null}

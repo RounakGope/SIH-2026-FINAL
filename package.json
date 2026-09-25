@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "dev:api": "vite --host --mode api",
     "build": "vite build",
     "preview": "vite preview --host",
     "deploy": "vite build && firebase deploy",

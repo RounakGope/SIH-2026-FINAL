@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLang, LANGS } from '../lib/i18n';
-import { initFarmer, getFarm, getPlots, saveFarm, setActivePlot, watchPlots, watchSettings, watchMyCases, mode } from '../lib/store';
+import { initFarmer, getFarm, getPlots, saveFarm, setActivePlot, watchPlots, watchSettings, watchMyCases, withdrawShared, mode } from '../lib/store';
 import { loadModel } from '../lib/model';
 import { CROPS, cropName } from '../content/rules';
 import { talukaName } from '../content/talukas';
@@ -52,6 +52,12 @@ export default function FarmerApp() {
   // This plot's walks. Walks from before plots existed belong to the first plot.
   const cases = farm ? allCases.filter(c => (c.plotId || plots[0]?.id) === farm.id) : [];
   const updateFarm = f => saveFarm(f, user?.uid);
+  const saveSetup = f => {
+    // Turning sharing off also takes down what this plot already shared.
+    if (farm?.share === true && f.share !== true && f.id) withdrawShared(f.id, user?.uid).catch(e => console.warn('withdraw', e));
+    updateFarm(f);
+    setTab('home');
+  };
 
   let pill;
   if (mode === 'local') pill = <span className="pill pill-neutral"><span className="dot" />{t('localMode')}</span>;
@@ -60,7 +66,7 @@ export default function FarmerApp() {
 
   const newPlot = () => { setFarm(null); setTab('setup'); };
   const screen = !farm || tab === 'setup'
-    ? <Setup farm={farm} settings={settings} onSave={f => { updateFarm(f); setTab('home'); }} onNewPlot={newPlot} />
+    ? <Setup farm={farm} settings={settings} onSave={saveSetup} onNewPlot={newPlot} />
     : tab === 'home' ? <Home farm={farm} myCases={cases} onFarm={updateFarm} goScan={() => setTab('scan')} />
     : tab === 'scan' ? <Scan farm={farm} user={user} cases={cases} goProgress={() => setTab('progress')} />
     : tab === 'nearby' ? <Nearby farm={farm} myCases={cases} />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { watchSms, mode } from '../lib/store';
+import { watchSms, watchStaff, mode } from '../lib/store';
 
 const KIND = { alert: 'Block risk alert', expert: 'Expert reply', broadcast: 'Officer advisory', escalation: 'Escalation', ivr: 'IVR' };
 
@@ -9,7 +9,9 @@ const KIND = { alert: 'Block risk alert', expert: 'Expert reply', broadcast: 'Of
 export default function SmsInbox() {
   const [msgs, setMsgs] = useState([]);
   const [who, setWho] = useState('');
-  useEffect(() => watchSms(setMsgs), []);
+  const [staff, setStaff] = useState(null);
+  useEffect(() => watchStaff(setStaff), []);
+  useEffect(() => watchSms(setMsgs), [staff]);
   const numbers = useMemo(() => [...new Set(msgs.map(m => m.to))], [msgs]);
   const shown = msgs.filter(m => !who || m.to === who);
 
@@ -22,6 +24,7 @@ export default function SmsInbox() {
       </header>
       <div className="staff-body" style={{ maxWidth: 560 }}>
         <div className="banner">Sandbox: these are the messages FasalRakshak would send. No real SMS leaves this {mode === 'api' ? 'server' : 'browser'}; a live gateway needs a DLT-registered sender ID.</div>
+        {mode === 'api' && !staff && <div className="card-light small">The server's message log holds farmers' phone numbers, so it is for KVK and officer staff only. <a href="/staff">Sign in on the dashboard</a> in this browser, then come back.</div>}
         <select className="input" value={who} onChange={e => setWho(e.target.value)} aria-label="Recipient">
           <option value="">All recipients</option>
           {numbers.map(n => <option key={n} value={n}>{n}</option>)}

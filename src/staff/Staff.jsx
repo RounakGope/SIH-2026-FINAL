@@ -59,9 +59,9 @@ function Login() {
   const [err, setErr] = useState('');
   return (
     <div className="staff">
-      <form className="login" onSubmit={e => { e.preventDefault(); setErr(''); staffLogin(email, pw).catch(x => setErr(x.code || 'Login failed')); }}>
+      <form className="login" onSubmit={e => { e.preventDefault(); setErr(''); staffLogin(email, pw).catch(x => setErr(x.code || x.message || 'Login failed')); }}>
         <h2 className="h-title">Staff login</h2>
-        <p className="small muted">KVK experts and district officers. Accounts are created in the Firebase console.</p>
+        <p className="small muted">KVK experts and district officers. {mode === 'api' ? 'Accounts are created on the FasalRakshak server.' : 'Accounts are created in the Firebase console.'}</p>
         <input className="input" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input className="input" type="password" placeholder="Password" value={pw} onChange={e => setPw(e.target.value)} />
         <button className="btn-big" type="submit">Log in</button>
@@ -173,8 +173,9 @@ function Queue({ pending, cases, staff }) {
 function QCard({ c, staff }) {
   const [correcting, setCorrecting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
   const act = async d => {
-    setBusy(true);
+    setBusy(true); setErr('');
     try {
       const updated = await decideCase(c.id, d, staff.email);
       // Farmer told by SMS (the API server does this itself).
@@ -182,9 +183,12 @@ function QCard({ c, staff }) {
         const text = expertReplySms({ ...c, ...(updated || {}), status: d.status, label: d.label || c.label }, c.lang || 'mr');
         if (text) sendSms({ to: c.phone, text, kind: 'expert', taluka: c.taluka });
       }
-    } catch (e) { alertless(e); setBusy(false); }
+    } catch (e) { console.error(e); setErr('Not saved: ' + (e.message || 'try again')); setBusy(false); }
   };
   const ageH = Math.round((Date.now() - c.createdAt) / 3600000);
+  const voice = c.kind === 'ivr'; // no photo and no model label: the expert calls back and diagnoses
+  const walk = [c.cropDay != null && 'Day ' + c.cropDay, c.stage, c.plantsWalked && `${c.plantsInfected}/${c.plantsWalked} plants`,
+    c.leafPct != null && `leaf ${c.leafPct}%`].filter(Boolean).join(' · ');
   return (
     <div className="qcard">
       {c.kind === 'ivr'
@@ -197,24 +201,25 @@ function QCard({ c, staff }) {
         <b>{c.taluka} · {c.crop}</b>
         <span className={'small ' + (ageH > 24 ? 'lvl-chip lvl-HIGH' : 'muted')}>{ageH} h ago</span>
       </div>
-      <div className="small muted">Day {c.cropDay} · {c.stage} · {c.plantsInfected}/{c.plantsWalked} plants · leaf {c.leafPct}%</div>
+      {walk && <div className="small muted">{walk}</div>}
       <div className="top3">
         {(c.top3 || []).map(x => <div key={x.label}><span>{ipmFor(x.label, c.crop).name.en}</span><span className="muted">{Math.round(x.p * 100)}%</span></div>)}
       </div>
       {!correcting ? (
         <div className="acts">
-          <button className="btn-line btn-sm btn-sage" disabled={busy} onClick={() => act({ status: 'confirmed', label: c.label })}>Confirm {ipmFor(c.label, c.crop).name.en}</button>
-          <button className="btn-line btn-sm" disabled={busy} onClick={() => setCorrecting(true)}>Correct…</button>
+          {!voice && <button className="btn-line btn-sm btn-sage" disabled={busy} onClick={() => act({ status: 'confirmed', label: c.label })}>Confirm {ipmFor(c.label, c.crop).name.en}</button>}
+          <button className="btn-line btn-sm" disabled={busy} onClick={() => setCorrecting(true)}>{voice ? 'Diagnose…' : 'Correct…'}</button>
           <button className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'lab_referred' })}>Ask for lab sample</button>
         </div>
       ) : (
         <div className="acts">
-          {classesFor(c.crop).map(l => (
+          {classesFor(c.crop).filter(l => !(voice && l === 'other')).map(l => (
             <button key={l} className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'corrected', label: l })}>{ipmFor(l, c.crop).name.en}</button>
           ))}
           <button className="btn-line btn-sm" onClick={() => setCorrecting(false)}>Cancel</button>
         </div>
       )}
+      {err && <div className="small" style={{ color: '#a8341f' }}>{err}</div>}
     </div>
   );
 }

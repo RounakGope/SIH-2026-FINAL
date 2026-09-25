@@ -128,6 +128,7 @@ export default function Setup({ farm, settings = {}, onSave, onNewPlot }) {
           <input type="checkbox" checked={!!f.sensorSim} onChange={e => set({ sensorSim: e.target.checked })} />
           <span>{t('sensorSim')}<br /><span className="small muted">{t('sensorSimHint')}</span></span>
         </label>
+        {farm?.id && <div className="small muted" style={{ marginTop: 6 }}>{t('sensorCode')}: <code style={{ userSelect: 'all' }}>{farm.id}</code></div>}
         {settings.assistant && (
           <div className="row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
             <button className="btn-line btn-sm" onClick={onNewPlot}>+ {t('addPlot')}</button>

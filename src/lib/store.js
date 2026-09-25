@@ -14,12 +14,12 @@
 // status: 'auto' | 'pending_review' | 'confirmed' | 'corrected' | 'lab_referred'
 import { firebaseEnabled, db, auth } from './firebase';
 import {
-  collection, doc, setDoc, onSnapshot, query, where, writeBatch, getDocs
+  collection, doc, setDoc, onSnapshot, query, where, writeBatch, getDocs, getDoc
 } from 'firebase/firestore';
 import {
   onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut
 } from 'firebase/auth';
-import { api, apiEnabled, setToken, getToken } from './api';
+import { api, apiEnabled, setToken, getToken, onTokenRejected } from './api';
 import { idb } from './idb';
 import { CELL } from '../content/outbreaks';
 
@@ -109,10 +109,7 @@ export function initFarmer(cb) {
     if (getToken()) ready();
     else {
       cb({ uid: readLocal('fr_api_uid', uid), anonymous: true }); // works offline straight away
-      const tryAuth = () => api('/auth/device', { method: 'POST', body: { deviceId: uid } })
-        .then(r => { setToken(r.token); writeLocal('fr_api_uid', r.uid); ready(); })
-        .catch(() => setTimeout(tryAuth, 15000));
-      tryAuth();
+      deviceAuth(ready);
     }
     return () => {};
   }
@@ -123,8 +120,25 @@ export function initFarmer(cb) {
   });
 }
 
+const STAFF = 'fr_staff'; // the signed-in staff member (API mode)
+
+// The device's token from the API, retried until the network is there. The same
+// device id always gets the same uid back, so nothing is lost if a token is refused.
+let authing = false;
+function deviceAuth(then) {
+  if (authing || !readLocal('fr_uid', null)) return;
+  authing = true;
+  const tryAuth = () => api('/auth/device', { method: 'POST', body: { deviceId: readLocal('fr_uid', null) } })
+    .then(r => { authing = false; setToken(r.token); writeLocal('fr_api_uid', r.uid); then(); })
+    .catch(() => setTimeout(tryAuth, 15000));
+  tryAuth();
+}
+if (mode === 'api') onTokenRejected(who => {
+  if (who === 'farmer') deviceAuth(flush);
+  else { writeLocal(STAFF, null); notify(STAFF); } // back to the staff login
+});
+
 // Staff (KVK expert / district officer).
-const STAFF = 'fr_staff';
 export function watchStaff(cb) {
   if (mode === 'local') { cb({ uid: 'local-staff', email: 'demo@local', role: 'officer' }); return () => {}; }
   if (mode === 'api') return listen(STAFF, () => cb(readLocal(STAFF, null)));
@@ -133,13 +147,13 @@ export function watchStaff(cb) {
 export async function staffLogin(email, password) {
   if (mode === 'api') {
     const r = await api('/auth/login', { method: 'POST', body: { email, password } });
-    setToken(r.token); writeLocal(STAFF, { uid: r.uid, email: r.email, role: r.role }); notify(STAFF);
+    setToken(r.token, 'staff'); writeLocal(STAFF, { uid: r.uid, email: r.email, role: r.role }); notify(STAFF);
     return r;
   }
   return signInWithEmailAndPassword(auth, email, password);
 }
 export function staffLogout() {
-  if (mode === 'api') { setToken(null); writeLocal(STAFF, null); notify(STAFF); return Promise.resolve(); }
+  if (mode === 'api') { setToken(null, 'staff'); writeLocal(STAFF, null); notify(STAFF); return Promise.resolve(); }
   return mode === 'firebase' ? signOut(auth) : Promise.resolve();
 }
 
@@ -257,12 +271,39 @@ export async function decideCase(id, decision, staffEmail) {
     if (i >= 0) { list[i] = { ...list[i], ...patch }; localSave(list); }
     return list[i];
   }
+  // The report follows the verdict, but only for a case its farmer agreed to share.
+  const snap = await getDoc(doc(db, 'cases', id));
   const b = writeBatch(db);
   b.update(doc(db, 'cases', id), patch);
-  const report = { id, status: patch.status };
-  if (patch.label) report.label = patch.label;
-  b.set(doc(db, 'reports', id), report, { merge: true });
+  if (snap.exists() && shared(snap.data())) b.set(doc(db, 'reports', id), reportOf({ ...snap.data(), ...patch }), { merge: true });
   return b.commit();
+}
+
+// Sharing consent withdrawn (DPDP: revocable). This plot's walks stop being shared,
+// and the reports already published from them come down, not just future ones.
+// Walks from before plots existed belong to the first plot.
+export async function withdrawShared(plotId, uid) {
+  const first = getPlots()[0]?.id;
+  const ofPlot = c => !c.seed && c.share === true && (c.plotId || first) === plotId;
+  if (mode === 'local') {
+    localSave(localAll().map(c => c.uid === uid && ofPlot(c) ? { ...c, share: false } : c));
+    return;
+  }
+  if (mode === 'api') {
+    // The server only serves reports for cases that are still shared.
+    (await idb.all('cases')).filter(ofPlot).forEach(c => upsertCase({ id: c.id, share: false }));
+    return;
+  }
+  const snap = await getDocs(query(collection(db, 'cases'), where('uid', '==', uid)));
+  const list = snap.docs.map(d => d.data()).filter(ofPlot);
+  for (let i = 0; i < list.length; i += 200) {
+    const b = writeBatch(db);
+    list.slice(i, i + 200).forEach(c => {
+      b.update(doc(db, 'cases', c.id), { share: false });
+      b.delete(doc(db, 'reports', c.id));
+    });
+    await b.commit();
+  }
 }
 
 // Write many cases at once (demo seed data). Firestore batches max 500 writes.
@@ -360,19 +401,28 @@ export function pushSensorReading(plotId, reading) {
   writeLocal(SENS, all); notify(SENS);
 }
 export function watchSensor(plotId, cb) {
-  if (mode === 'api') return poll(`/sensors/${plotId}`, cb, 30000);
-  return listen(SENS, () => cb(readLocal(SENS, {})[plotId] || []));
+  const onPhone = () => readLocal(SENS, {})[plotId] || [];
+  if (mode !== 'api') return listen(SENS, () => cb(onPhone()));
+  // A field device posts to the server (POST /api/sensors/readings with its device
+  // key); the in-app simulator stands in for one on this phone. The device's
+  // readings win when there are any (adding both would count wet hours twice).
+  let fromServer = [];
+  const emit = () => cb(fromServer.length ? fromServer : onPhone());
+  const offPoll = poll(`/sensors/${plotId}`, r => { fromServer = r; emit(); }, 30000);
+  const offPhone = listen(SENS, emit);
+  return () => { offPoll(); offPhone(); };
 }
 
 // ---------- API outbox: offline-first, idempotent sync ----------
 const OUTBOX = 'fr_outbox_changed';
-let syncing = false;
+let syncing = false, again = false;
 function queue(op) {
   const opId = newId(); // the idempotency key: the server applies each opId once
   idb.put('outbox', Date.now() + '-' + opId, { opId, ...op }).then(() => { notify(OUTBOX); flush(); });
 }
 async function flush() {
-  if (syncing || !navigator.onLine || !getToken()) return;
+  if (!navigator.onLine || !getToken()) return;
+  if (syncing) { again = true; return; } // run once more when this round ends
   syncing = true;
   try {
     const keys = (await idb.keys('outbox')).sort();
@@ -385,12 +435,19 @@ async function flush() {
       notify(OUTBOX);
     }
     // Pull the server's view of my cases: expert decisions and re-verification land here.
+    // A case with changes still in the outbox keeps its phone copy until they land.
+    const waiting = new Set((await Promise.all((await idb.keys('outbox')).map(k => idb.get('outbox', k))))
+      .filter(op => op?.type === 'case').map(op => op.case.id));
     for (const c of await api('/cases/mine')) {
+      if (waiting.has(c.id)) continue;
       const local = await idb.get('cases', c.id);
       await idb.put('cases', c.id, { ...(local || {}), ...c, photo: local?.photo || c.photo });
     }
     notify(CASES);
-  } catch (e) { console.warn('sync', e.message); } finally { syncing = false; }
+  } catch (e) { console.warn('sync', e.message); } finally {
+    syncing = false;
+    if (again) { again = false; flush(); }
+  }
 }
 let started = false;
 function startSync() {
