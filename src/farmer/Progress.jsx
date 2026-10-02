@@ -1,9 +1,14 @@
-import { useState } from 'react';
-import { useLang } from '../lib/i18n';
-import { ipmFor } from '../content/ipm';
+import { useEffect, useState } from 'react';
+import { useLang, LOCALE } from '../lib/i18n';
+import { ipmFor, TIER_LABEL, CHEM_UNLOCK_INDEX } from '../content/ipm';
 import { PRICE } from '../content/schemes';
+import { areaLabel } from '../content/area';
 import { evidencePdf } from '../lib/evidence';
-import Schemes from './Schemes';
+import { tickCare, localDay } from '../lib/store';
+import Schemes, { loadSchemeInputs, saveSchemeInputs } from './Schemes';
+
+const DAY = 86400000;
+const WEEK = 7; // a photo walk every week; the remedies are ticked off day by day in between
 
 // Field severity index = % plants infected × average leaf severity ÷ 100.
 export function fieldIndex(c) {
@@ -16,8 +21,8 @@ const EXAMPLE = {
   projected: [12, 23, 38, 55, 70, 82, 90, 95]
 };
 
-export default function Progress({ farm, cases }) {
-  const { t, pick, lang } = useLang();
+export default function Progress({ farm, cases, goScan }) {
+  const { t, pick } = useLang();
   const scans = cases.filter(c => c.plantsWalked);
   const real = scans.length >= 2;
 
@@ -25,7 +30,7 @@ export default function Progress({ farm, cases }) {
   if (real) {
     const t0 = scans[0].createdAt;
     observed = scans.map(fieldIndex);
-    const weeks = scans.map(c => (c.createdAt - t0) / (7 * 86400000));
+    const weeks = scans.map(c => (c.createdAt - t0) / (7 * DAY));
     const p0 = Math.max(2, observed[0]);
     // Untreated projection: logistic growth from the first scan (illustrative, r = 0.45/week).
     projected = weeks.map(w => Math.round(100 / (1 + ((100 - p0) / p0) * Math.exp(-0.45 * w))));
@@ -34,14 +39,13 @@ export default function Progress({ farm, cases }) {
     observed = EXAMPLE.observed; projected = EXAMPLE.projected;
     labels = observed.map((_, i) => 'Wk' + (i + 1));
   }
-  const gap = Math.max(0, projected[projected.length - 1] - observed[observed.length - 1]);
-  // Price the gap at MSP with the farmer's own usual yield (entered under Schemes).
-  let yieldQ = null;
-  try { yieldQ = JSON.parse(localStorage.getItem('fr_scheme_inputs'))?.[farm.id]?.yieldQPerAcre ?? null; } catch {}
-  const price = PRICE[farm.crop];
-  const kept = yieldQ && price ? Math.round(yieldQ * farm.acres * price.rs * gap / 100) : null;
+  const last = observed.length - 1;
+  const gap = Math.max(0, projected[last] - observed[last]);
+  // The farmer's usual yield prices the gap; the same figure the insurance section uses.
+  const [version, setVersion] = useState(0);
+  const inputs = loadSchemeInputs(farm.id);
+  const setYield = y => { saveSchemeInputs(farm.id, { ...loadSchemeInputs(farm.id), yieldQPerAcre: y }); setVersion(n => n + 1); };
   const [making, setMaking] = useState(false);
-  const [, setInputsVersion] = useState(0); // re-price the gap as the farmer types
   const makePdf = async () => { setMaking(true); try { await evidencePdf(farm, cases); } finally { setMaking(false); } };
 
   return (
@@ -50,6 +54,8 @@ export default function Progress({ farm, cases }) {
         <h2 className="h-title">{t('progTitle')}</h2>
         <p className="lead">{t('progLead')}</p>
       </div>
+
+      <CarePlan latest={scans[scans.length - 1]} goScan={goScan} />
 
       <div className="chart-wrap">
         <Chart observed={observed} projected={projected} labels={labels} />
@@ -61,13 +67,7 @@ export default function Progress({ farm, cases }) {
         {!real && <div className="small" style={{ marginTop: 4 }}><span className="todo">{t('exampleData')}</span></div>}
       </div>
 
-      <div className="saved-card">
-        <div className="small" style={{ opacity: .85, letterSpacing: '.08em', textTransform: 'uppercase' }}>
-          {t('gapTitle')}</div>
-        {kept != null
-          ? <><b>₹{kept.toLocaleString('en-IN')}</b><div className="small">{t('yieldKept', { a: farm.acres })} · {t('atMspShort', { p: price.rs.toLocaleString('en-IN') })}{real ? '' : ' · ' + t('illustrative')}</div></>
-          : <div className="small" style={{ marginTop: 6 }}>{t('enterYield')}</div>}
-      </div>
+      <Money farm={farm} yieldQ={inputs.yieldQPerAcre} gap={gap} untreated={projected[last]} real={real} onYield={setYield} />
 
       <section className="card">
         <h3>{t('history')}</h3>
@@ -96,9 +96,112 @@ export default function Progress({ farm, cases }) {
         </button>
       </section>
 
-      <Schemes farm={farm} cases={cases} gapPct={real ? gap : undefined} onChange={() => setInputsVersion(n => n + 1)} />
+      <Schemes farm={farm} cases={cases} gapPct={real ? gap : undefined} version={version} onChange={() => setVersion(n => n + 1)} />
     </main>
   );
+}
+
+const startOfDay = ms => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
+
+// This week's care plan: the remedies for the latest photo walk, ticked off each day
+// they are done. After a week the farmer does a new walk, which adds the next point
+// to the graph and brings a new plan.
+function CarePlan({ latest, goScan }) {
+  const { t, pick, lang } = useLang();
+  const scanButton = <button className="btn-big" style={{ marginTop: 10 }} onClick={goScan}>📷 {t('scanNow')}</button>;
+  const card = (body, footer) => (
+    <section className="card">
+      <h3 style={{ marginTop: 0 }}>{t('carePlanTitle')}</h3>
+      {body}
+      {footer}
+    </section>
+  );
+  if (!latest) return card(<p className="small" style={{ margin: 0 }}>{t('careFirst')}</p>, scanButton);
+
+  const start = startOfDay(latest.createdAt);
+  const dayN = Math.round((startOfDay(Date.now()) - start) / DAY) + 1; // the walk's day is day 1
+  const due = dayN > WEEK;
+  const nextWalk = new Date(start + WEEK * DAY).toLocaleDateString(LOCALE[lang], { weekday: 'short', day: 'numeric', month: 'short' });
+  const footer = due
+    ? <><div className="banner" style={{ marginTop: 10 }}>{t('walkDue')}</div>{scanButton}</>
+    : <div className="small muted" style={{ marginTop: 10 }}>{t('nextWalk', { d: nextWalk, n: WEEK + 1 - dayN })}</div>;
+
+  const info = ipmFor(latest.label, latest.crop);
+  // No plan without a firm diagnosis: the app doesn't prescribe below its confidence
+  // threshold, so the farmer waits for the expert (or the lab) with interim advice.
+  if (latest.status === 'pending_review') return card(<p className="small" style={{ margin: 0 }}>{t('careWaiting')}</p>, footer);
+  if (latest.status === 'lab_referred') return card(<p className="small" style={{ margin: 0 }}>{t('careLab')}</p>, footer);
+  if (!info.diseased) return card(<p className="small" style={{ margin: 0 }}>{t(latest.label === 'other' ? 'careRetake' : 'careHealthy')}</p>, footer);
+
+  const chemOpen = !info.referLab && fieldIndex(latest) >= CHEM_UNLOCK_INDEX;
+  const days = Array.from({ length: WEEK }, (_, i) => localDay(start + i * DAY));
+  const today = localDay();
+  const doneOn = (d, i) => (latest.care?.[d] || []).includes(i);
+  return card(
+    <>
+      <p className="small muted" style={{ marginTop: 0 }}>
+        <b>{pick(info.name)}</b> · {t('careDay', { n: Math.min(dayN, WEEK) })}. {t('careTick')}
+      </p>
+      <div className="ladder">
+        {info.steps.map((s, i) => {
+          const chem = s.tier === 'chemical';
+          if (chem && !chemOpen) return (
+            <div key={i} className="rung chem locked">
+              <span className="n">{i + 1}</span>
+              <div className="t"><b>{pick(TIER_LABEL[s.tier])}</b>{t('lockedChem')}</div>
+            </div>
+          );
+          return (
+            <label key={i} className={'rung care' + (chem ? ' chem' : '')}>
+              <input type="checkbox" checked={doneOn(today, i)} onChange={e => tickCare(latest, i, s, e.target.checked)}
+                aria-label={t('doneToday') + ': ' + pick(TIER_LABEL[s.tier])} />
+              <div className="t">
+                <b>{pick(TIER_LABEL[s.tier])}</b>
+                {chem ? <Txt s={s.product} /> : pick(s.text)}
+                <div className="dots" title={t('careDots')}>
+                  {days.map(d => <i key={d} className={(doneOn(d, i) ? 'on' : '') + (d === today ? ' today' : '')} />)}
+                </div>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+    </>,
+    footer
+  );
+}
+
+// What following the remedies is worth: the gap between the untreated projection and
+// the field, priced at MSP with the farmer's own usual yield.
+function Money({ farm, yieldQ, gap, untreated, real, onYield }) {
+  const { t, lang } = useLang();
+  const price = PRICE[farm.crop];
+  if (!price) return null;
+  const [text, setText] = useState(yieldQ ?? '');
+  useEffect(() => { if (+text !== yieldQ) setText(yieldQ ?? ''); }, [yieldQ]); // changed in the dropdown
+  const value = yieldQ > 0 ? yieldQ * farm.acres * price.rs : null;
+  const rs = n => value == null ? '—' : '₹' + Math.round(value * n / 100).toLocaleString('en-IN');
+  return (
+    <section className="saved-card money">
+      <div className="small caps">{t('moneyTitle')}</div>
+      <div className="money-row"><span>{t('moneySaved')}</span><b>{rs(gap)}</b></div>
+      <div className="money-row"><span>{t('moneyAtRisk')}</span><b>{rs(untreated)}</b></div>
+      <label className="money-yield">
+        <span className="small">{t('yieldAsk')}</span>
+        <input className="input" type="number" inputMode="decimal" min="0" placeholder="5" value={text}
+          onChange={e => { setText(e.target.value); onYield(e.target.value === '' ? undefined : +e.target.value); }} />
+      </label>
+      <div className="small" style={{ opacity: .85, marginTop: 6 }}>
+        {value == null ? t('moneyNeedYield') : t('moneyBasis', { a: areaLabel(farm, lang), p: price.rs.toLocaleString('en-IN') })}
+        {real ? '' : ' ' + t('moneyExample')}
+      </div>
+    </section>
+  );
+}
+
+function Txt({ s }) {
+  if (!s) return null;
+  return s.startsWith('TODO') ? <span className="todo">{s}</span> : <>{s}</>;
 }
 
 function statusText(c, t) {

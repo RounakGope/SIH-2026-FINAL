@@ -202,17 +202,21 @@ function QCard({ c, staff }) {
         <span className={'small ' + (ageH > 24 ? 'lvl-chip lvl-HIGH' : 'muted')}>{ageH} h ago</span>
       </div>
       {walk && <div className="small muted">{walk}</div>}
+      {!voice && <div className="small muted">AI’s diagnosis on the farmer’s phone:</div>}
       <div className="top3">
         {(c.top3 || []).map(x => <div key={x.label}><span>{ipmFor(x.label, c.crop).name.en}</span><span className="muted">{Math.round(x.p * 100)}%</span></div>)}
       </div>
       {!correcting ? (
         <div className="acts">
-          {!voice && <button className="btn-line btn-sm btn-sage" disabled={busy} onClick={() => act({ status: 'confirmed', label: c.label })}>Confirm {ipmFor(c.label, c.crop).name.en}</button>}
-          <button className="btn-line btn-sm" disabled={busy} onClick={() => setCorrecting(true)}>{voice ? 'Diagnose…' : 'Correct…'}</button>
-          <button className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'lab_referred' })}>Ask for lab sample</button>
+          {!voice && <button className="btn-line btn-sm btn-sage" disabled={busy} onClick={() => act({ status: 'confirmed', label: c.label })}>
+            ✓ Agree: {c.label === 'other' ? 'the photo can’t be diagnosed' : 'it is ' + ipmFor(c.label, c.crop).name.en}</button>}
+          <button className="btn-line btn-sm" disabled={busy} onClick={() => setCorrecting(true)}>
+            {voice ? 'Choose the disease (after your call)' : '✎ Disagree: choose the right disease'}</button>
+          <button className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'lab_referred' })}>🧪 Not sure: ask for a lab sample</button>
         </div>
       ) : (
         <div className="acts">
+          <div className="small" style={{ width: '100%' }}>{voice ? 'Your diagnosis after the call:' : 'It is actually:'}</div>
           {classesFor(c.crop).filter(l => !(voice && l === 'other')).map(l => (
             <button key={l} className="btn-line btn-sm" disabled={busy} onClick={() => act({ status: 'corrected', label: l })}>{ipmFor(l, c.crop).name.en}</button>
           ))}

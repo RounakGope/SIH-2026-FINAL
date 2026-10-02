@@ -6,7 +6,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -29,7 +28,6 @@ public class SecurityConfig {
 				.requestMatchers("/api/auth/**", "/api/health").permitAll()
 				// Telephony and device webhooks authenticate with their own shared keys.
 				.requestMatchers("/api/ivr/**").permitAll()
-				.requestMatchers(HttpMethod.POST, "/api/sensors/readings").permitAll()
 				.requestMatchers("/api/staff/**", "/api/sms/**").hasAnyRole("EXPERT", "OFFICER")
 				.requestMatchers("/api/sync", "/api/cases/mine").hasRole("FARMER")
 				.requestMatchers("/api/**").authenticated()

@@ -5,17 +5,26 @@ import { talukaName } from './talukas';
 
 // `model: true` = public/model/<crop lowercased>/ holds a trained model.
 export const CROPS = {
-  Cotton: { mr: 'कापूस', hi: 'कपास', icon: '🌱', variety: 'Bt hybrid (BG-II)', model: true },
-  Soybean: { mr: 'सोयाबीन', hi: 'सोयाबीन', icon: '🌿', variety: 'JS-335', model: true },
-  Chickpea: { mr: 'हरभरा', hi: 'चना', icon: '☘️', variety: 'JAKI 9218', model: true },
-  Sugarcane: { mr: 'ऊस', hi: 'गन्ना', icon: '🎋', variety: 'Co 86032', model: true },
-  Tur: { mr: 'तूर', hi: 'अरहर', icon: '🫘', variety: 'BDN-711', model: false },
-  Grape: { mr: 'द्राक्ष', hi: 'अंगूर', icon: '🍇', variety: 'Thompson Seedless', model: false }
+  Cotton: { mr: 'कापूस', hi: 'कपास', icon: '🌱', model: true },
+  Soybean: { mr: 'सोयाबीन', hi: 'सोयाबीन', icon: '🌿', model: true },
+  Chickpea: { mr: 'हरभरा', hi: 'चना', icon: '☘️', model: true },
+  Sugarcane: { mr: 'ऊस', hi: 'गन्ना', icon: '🎋', model: true },
+  Tur: { mr: 'तूर', hi: 'अरहर', icon: '🫘', model: false },
+  Grape: { mr: 'द्राक्ष', hi: 'अंगूर', icon: '🍇', model: false }
 };
 
+// The farmer gives only the sowing month ("YYYY-MM"; older plots have a full
+// date), so the crop's age counts whole months: the sowing month is day 0, the
+// next month day 30, and so on.
 export function cropDay(sowDate, today = new Date()) {
-  if (!sowDate) return null;
-  return Math.max(1, Math.round((today - new Date(sowDate)) / 86400000));
+  const [y, m] = String(sowDate || '').split('-').map(Number);
+  if (!y || !m) return null;
+  return Math.max(0, ((today.getFullYear() - y) * 12 + today.getMonth() + 1 - m) * 30);
+}
+// "Jul 2026"
+export function sowMonthLabel(sowDate, locale = 'en-IN') {
+  const [y, m] = String(sowDate || '').split('-').map(Number);
+  return y && m ? new Date(y, m - 1, 1).toLocaleDateString(locale, { month: 'short', year: 'numeric' }) : '';
 }
 
 // Growth stage from days after sowing: [last day of the stage, name], per crop.
@@ -75,34 +84,24 @@ function pinkBollworm(farm) {
 
 // Example weather rule from the deck: humidity above 85% with rain on 3 or more
 // of the next 5 days → leaf-spot risk. TODO: confirm with SAU/KVK.
-function leafSpot(weather, wet) {
-  if (!weather && wet == null) {
+function leafSpot(weather) {
+  if (!weather) {
     return { id: 'leafspot', pest: { en: 'Leaf spot (weather)', mr: 'पानावरील ठिपके (हवामान)', hi: 'पत्ती धब्बा (मौसम)' }, level: 'LOW',
       trigger: { en: 'Forecast not loaded yet. Connect once to fetch it.', mr: 'हवामान अंदाज अजून आलेला नाही.', hi: 'मौसम का पूर्वानुमान अभी नहीं आया।' },
       action: { en: 'Open the app online once to fetch the 5-day forecast.', mr: 'अंदाजासाठी एकदा इंटरनेटसह अ‍ॅप उघडा.', hi: 'पूर्वानुमान के लिए एक बार इंटरनेट के साथ ऐप खोलें।' } };
   }
-  const wetDays = weather ? weather.days.filter(d => d.rhMean > 85 && d.rain >= 2.5).length : 0;
-  // Example thresholds, to be tuned by SAU/KVK: 3 wet days in the forecast, or a
-  // field sensor showing the leaves wet 10 h or more in the last 24 h.
-  const level = wetDays >= 3 || (wet != null && wet >= 10) ? 'MEDIUM' : 'LOW';
-  // Say plainly that this counts forecast days, so it can't be read as "humidity is
-  // above 85% now"; and don't describe a forecast that hasn't loaded.
-  const forecast = !weather
-    ? { en: 'Forecast not loaded yet.', mr: 'हवामान अंदाज अजून आलेला नाही.', hi: 'मौसम का पूर्वानुमान अभी नहीं आया।' }
-    : wetDays === 0
-      ? { en: 'No day in the 5-day forecast is both humid (over 85%) and rainy.', mr: 'पुढील 5 दिवसांत 85% पेक्षा जास्त आर्द्रता व पाऊस असलेला एकही दिवस नाही.', hi: 'अगले 5 दिनों में ऐसा कोई दिन नहीं जिसमें नमी 85% से ज़्यादा हो और बारिश भी हो।' }
-      : { en: `${wetDays} of the next 5 days ${wetDays === 1 ? 'is' : 'are'} forecast to be humid (over 85%) and rainy.`, mr: `पुढील 5 पैकी ${wetDays} दिवस 85% पेक्षा जास्त आर्द्रता व पाऊस असण्याचा अंदाज.`, hi: `अगले 5 में से ${wetDays} दिन 85% से ज़्यादा नमी और बारिश का अनुमान।` };
-  const sensor = wet == null ? { en: '', mr: '', hi: '' }
-    : { en: ` Field sensor: leaves wet ${wet} h in the last 24 h.`, mr: ` शेतातील सेन्सर: गेल्या 24 तासांत पाने ${wet} तास ओली.`, hi: ` खेत का सेंसर: पिछले 24 घंटे में पत्तियाँ ${wet} घंटे गीली।` };
+  const wetDays = weather.days.filter(d => d.rhMean > 85 && d.rain >= 2.5).length;
+  // Example threshold, to be tuned by SAU/KVK: 3 humid, rainy days in the forecast.
+  const level = wetDays >= 3 ? 'MEDIUM' : 'LOW';
   return {
     id: 'leafspot',
     pest: { en: 'Leaf spot (weather)', mr: 'पानावरील ठिपके (हवामान)', hi: 'पत्ती धब्बा (मौसम)' },
     level,
-    trigger: {
-      en: forecast.en + sensor.en,
-      mr: forecast.mr + sensor.mr,
-      hi: forecast.hi + sensor.hi
-    },
+    // Say plainly that this counts forecast days, so it can't be read as "humidity
+    // is above 85% now".
+    trigger: wetDays === 0
+      ? { en: 'No day in the 5-day forecast is both humid (over 85%) and rainy.', mr: 'पुढील 5 दिवसांत 85% पेक्षा जास्त आर्द्रता व पाऊस असलेला एकही दिवस नाही.', hi: 'अगले 5 दिनों में ऐसा कोई दिन नहीं जिसमें नमी 85% से ज़्यादा हो और बारिश भी हो।' }
+      : { en: `${wetDays} of the next 5 days ${wetDays === 1 ? 'is' : 'are'} forecast to be humid (over 85%) and rainy.`, mr: `पुढील 5 पैकी ${wetDays} दिवस 85% पेक्षा जास्त आर्द्रता व पाऊस असण्याचा अंदाज.`, hi: `अगले 5 में से ${wetDays} दिन 85% से ज़्यादा नमी और बारिश का अनुमान।` },
     action: level === 'MEDIUM'
       ? { en: 'Avoid late irrigation; do a 10-plant scan in 2 days.', mr: 'उशिरा पाणी देणे टाळा; 2 दिवसांत 10 झाडांचे स्कॅन करा.', hi: 'देर शाम सिंचाई न करें; 2 दिन में 10 पौधों का स्कैन करें।' }
       : { en: 'No action needed this week.', mr: 'या आठवड्यात कृती आवश्यक नाही.', hi: 'इस हफ़्ते कुछ करने की ज़रूरत नहीं।' }
@@ -142,10 +141,10 @@ function nearby(talukaCases, farm, myCaseIds) {
 }
 
 const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-export function evaluateRisks(farm, weather, talukaCases, myCaseIds = new Set(), wet = null) {
+export function evaluateRisks(farm, weather, talukaCases, myCaseIds = new Set()) {
   const out = [];
   if (farm.crop === 'Cotton') out.push(pinkBollworm(farm));
-  out.push(leafSpot(weather, wet));
+  out.push(leafSpot(weather));
   out.push(nearby(talukaCases || [], farm, myCaseIds));
   return out.sort((a, b) => ORDER[a.level] - ORDER[b.level]);
 }

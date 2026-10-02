@@ -104,7 +104,7 @@ call('POST', f"/staff/cases/{fine['id']}/decision", {'status': 'corrected', 'lab
 reply = [m for m in call('GET', '/sms/sandbox', token=E)[1] if m['to'] == '9000000012']
 check('a healthy verdict says no treatment is needed', reply and 'इलाज की ज़रूरत नहीं' in reply[0]['text'], reply[:1])
 
-print('Broadcast, IVR, sensors, speech')
+print('Broadcast, IVR, speech')
 c, b = call('POST', '/staff/broadcast', {'taluka': 'Arvi', 'text': 'Test advisory for Arvi'}, token=E)
 check('broadcast reaches the plot that agreed to SMS', c == 200 and b['sent'] >= 1, b)
 c, _ = call('POST', '/ivr/register', {'phone': '9000000022', 'taluka': 'Arvi', 'crop': 'Cotton', 'lang': 'mr'})
@@ -115,12 +115,6 @@ check('IVR rejects a bad phone number', call('POST', '/ivr/calls', {'phone': '12
 call('POST', f"/staff/cases/{ivr['id']}/decision", {'status': 'corrected', 'label': 'leaf_curl'}, token=E)
 reply = [m for m in call('GET', '/sms/sandbox', token=E)[1] if m['to'] == '9000000022' and m['kind'] == 'expert']
 check('the voice caller gets the diagnosis, not a link to an app', reply and 'फोनवर' in reply[0]['text'] and 'उघडा' not in reply[0]['text'], reply[:1])
-check('sensor reading without the device key refused', call('POST', '/sensors/readings', {'plotId': plot['id'], 'leafWetness': 1})[0] == 403)
-c, _ = call('POST', '/sensors/readings', {'plotId': plot['id'], 'leafWetness': 1, 'soilMoisture': 31.5, 'tempC': 22.1, 'rh': 93, 'stepMin': 30}, headers={'X-Device-Key': 'dev-sensor-key'})
-check('sensor reading with the device key stored', c == 200)
-c, rd = call('GET', f"/sensors/{plot['id']}", token=A)
-check('farmer reads their plot sensor', c == 200 and rd and rd[-1]['rh'] == 93, rd)
-check("another farmer can't read it", call('GET', f"/sensors/{plot['id']}", token=B)[0] == 403)
 check('speech without Bhashini keys answers 503 (app falls back to the phone)', call('POST', '/speech/tts', {'text': 'नमस्कार', 'lang': 'mr'}, token=A)[0] == 503)
 
 print('Scheduled automations (escalation, block alert)')

@@ -55,17 +55,9 @@ function poll(path, cb, ms = 5000) {
   return () => { stop = true; clearInterval(t); };
 }
 
-// ---------- device settings ----------
-// assistant: agri-assistant mode (one device, many farmers' plots)
-// lowData:   sync scans without photos
-const SETTINGS = 'fr_settings';
-export function getSettings() { return readLocal(SETTINGS, { assistant: false, lowData: false }); }
-export function saveSettings(s) { writeLocal(SETTINGS, { ...getSettings(), ...s }); notify(SETTINGS); }
-export function watchSettings(cb) { return listen(SETTINGS, () => cb(getSettings())); }
-
-// ---------- plots (a farmer's field; many per device in agri-assistant mode) ----------
-// A plot: { id, farmerName?, phone?, smsConsent, share, crop, variety, sowDate,
-//           acres, lat, lon, taluka, traps }
+// ---------- plots (a farmer's field) ----------
+// A plot: { id, phone?, smsConsent, share, crop, sowDate ("YYYY-MM"), area, areaUnit,
+//           acres (area converted, used for all maths), lat, lon, taluka, traps }
 const PLOTS = 'fr_plots', ACTIVE = 'fr_active';
 function migrate() {
   if (readLocal(PLOTS, null)) return;
@@ -77,7 +69,6 @@ export function getFarm() {
   const plots = getPlots(), id = readLocal(ACTIVE, null);
   return plots.find(p => p.id === id) || plots[0] || null;
 }
-export function setActivePlot(id) { writeLocal(ACTIVE, id); notify(PLOTS); }
 export function saveFarm(farm, uid) {
   const plot = farm.id ? farm : { ...farm, id: newId() };
   const plots = getPlots();
@@ -89,12 +80,6 @@ export function saveFarm(farm, uid) {
     setDoc(doc(db, 'farms', uid), { ...plot, updatedAt: Date.now() }, { merge: true }).catch(e => console.warn('farm sync', e));
   }
   return plot;
-}
-export function removePlot(id) {
-  const plots = getPlots().filter(p => p.id !== id);
-  writeLocal(PLOTS, plots);
-  if (readLocal(ACTIVE, null) === id) writeLocal(ACTIVE, plots[0]?.id ?? null);
-  notify(PLOTS);
 }
 export function watchPlots(cb) { return listen(PLOTS, () => cb(getPlots(), getFarm())); }
 
@@ -186,7 +171,6 @@ function localWatch(filter, cb) { return listen(CASES, () => cb(localAll().filte
 // Save or update a case. Never await this in the UI: it is safe on the phone as
 // soon as it returns, and uploads by itself.
 export function upsertCase(c) {
-  const lowData = getSettings().lowData;
   if (mode === 'local') {
     const list = localAll();
     const i = list.findIndex(x => x.id === c.id);
@@ -195,15 +179,14 @@ export function upsertCase(c) {
     return;
   }
   if (mode === 'api') {
-    // Keep the full record on the phone; in low-data mode the photo stays here.
     idb.get('cases', c.id).then(prev => {
       idb.put('cases', c.id, { ...(prev || {}), ...c }).then(() => notify(CASES));
-      queue({ type: 'case', case: lowData ? { ...c, photo: undefined } : c });
+      queue({ type: 'case', case: c });
     });
     return;
   }
   const b = writeBatch(db);
-  b.set(doc(db, 'cases', c.id), lowData ? { ...c, photo: null } : c, { merge: true });
+  b.set(doc(db, 'cases', c.id), c, { merge: true });
   if (shared(c)) b.set(doc(db, 'reports', c.id), reportOf(c), { merge: true });
   b.commit().catch(e => console.warn('case sync', e));
 }
@@ -251,10 +234,27 @@ export function watchAllCases(cb) {
     e => console.warn('watchAllCases', e));
 }
 
-// The farmer applied a step of the IPM ladder: logged on the walk, so the next walk
-// can tell whether it worked.
-export function markTreatment(caseId, step) {
-  upsertCase({ id: caseId, treatment: { tier: step.tier, product: step.product || null, at: Date.now() } });
+// Today on the phone, "YYYY-MM-DD".
+export function localDay(t = Date.now()) {
+  const d = new Date(t), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// The week's care plan: which remedy steps the farmer did on which day, kept on the
+// walk they belong to ({ care: { "YYYY-MM-DD": [step index, ...] } }). The strongest
+// step done becomes the walk's `treatment`, which the next walk uses to tell whether
+// it worked (and what worked for neighbours).
+const TIER_RANK = { cultural: 1, mechanical: 2, biological: 3, chemical: 4 };
+export function tickCare(c, index, step, done, day = localDay()) {
+  const care = { ...(c.care || {}) };
+  const today = new Set(care[day] || []);
+  if (done) today.add(index); else today.delete(index);
+  care[day] = [...today].sort((a, b) => a - b);
+  const patch = { id: c.id, care };
+  if (done && (TIER_RANK[step.tier] || 0) >= (TIER_RANK[c.treatment?.tier] || 0)) {
+    patch.treatment = { tier: step.tier, product: step.product || null, at: Date.now() };
+  }
+  upsertCase(patch);
 }
 
 export async function decideCase(id, decision, staffEmail) {
@@ -389,28 +389,6 @@ export function ivrReport({ phone, lang, crop, taluka, lat, lon, transcript }) {
   // The IVR is a server-side channel; Firestore rules rightly stop a browser from
   // filing a case for someone else's phone.
   return Promise.reject(new Error('The IVR line runs on the FasalRakshak server; use it with the API or in demo mode.'));
-}
-
-// ---------- field sensors ----------
-// Readings: { at, leafWetness (0–1, share of the last interval the leaf was wet),
-//             soilMoisture %, tempC, rh %, device }
-const SENS = 'fr_sensors';
-export function pushSensorReading(plotId, reading) {
-  const all = readLocal(SENS, {});
-  all[plotId] = [...(all[plotId] || []), { at: Date.now(), ...reading }].slice(-288); // 24 h at 5-min steps
-  writeLocal(SENS, all); notify(SENS);
-}
-export function watchSensor(plotId, cb) {
-  const onPhone = () => readLocal(SENS, {})[plotId] || [];
-  if (mode !== 'api') return listen(SENS, () => cb(onPhone()));
-  // A field device posts to the server (POST /api/sensors/readings with its device
-  // key); the in-app simulator stands in for one on this phone. The device's
-  // readings win when there are any (adding both would count wet hours twice).
-  let fromServer = [];
-  const emit = () => cb(fromServer.length ? fromServer : onPhone());
-  const offPoll = poll(`/sensors/${plotId}`, r => { fromServer = r; emit(); }, 30000);
-  const offPhone = listen(SENS, emit);
-  return () => { offPoll(); offPhone(); };
 }
 
 // ---------- API outbox: offline-first, idempotent sync ----------

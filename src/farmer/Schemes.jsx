@@ -2,20 +2,22 @@ import { useEffect, useState } from 'react';
 import { useLang, LOCALE } from '../lib/i18n';
 import { ipmFor } from '../content/ipm';
 import { schemeMaths, nextDeadline, SOURCES } from '../content/schemes';
+import { areaLabel } from '../content/area';
 
 const KEY = 'fr_scheme_inputs';
-const load = id => { try { return JSON.parse(localStorage.getItem(KEY))?.[id] || {}; } catch { return {}; } };
-const store = (id, v) => { try { const all = JSON.parse(localStorage.getItem(KEY)) || {}; all[id] = v; localStorage.setItem(KEY, JSON.stringify(all)); } catch {} };
+// What the farmer typed, per plot. My Progress reads the usual yield from here too.
+export const loadSchemeInputs = id => { try { return JSON.parse(localStorage.getItem(KEY))?.[id] || {}; } catch { return {}; } };
+export const saveSchemeInputs = (id, v) => { try { const all = JSON.parse(localStorage.getItem(KEY)) || {}; all[id] = v; localStorage.setItem(KEY, JSON.stringify(all)); } catch {} };
 const rs = n => '₹' + Math.round(n).toLocaleString('en-IN');
 
 // The money side of a diagnosis: insurance, the remedy's cost, the crop's value
 // at MSP, and subsidies. Rates are published ones; the farmer types in what only
 // they know (sum insured, shop price, yield).
-export default function Schemes({ farm, cases, gapPct, onChange }) {
+export default function Schemes({ farm, cases, gapPct, version, onChange }) {
   const { t, pick, lang } = useLang();
-  const [v, setV] = useState(() => load(farm.id));
-  useEffect(() => { setV(load(farm.id)); }, [farm.id]);
-  const set = patch => { const n = { ...v, ...patch }; setV(n); store(farm.id, n); onChange?.(n); };
+  const [v, setV] = useState(() => loadSchemeInputs(farm.id));
+  useEffect(() => { setV(loadSchemeInputs(farm.id)); }, [farm.id, version]);
+  const set = patch => { const n = { ...v, ...patch }; setV(n); saveSchemeInputs(farm.id, n); onChange?.(n); };
 
   // The chemical step for the latest diagnosed disease, sized for this farm.
   const latest = [...cases].reverse().find(c => ipmFor(c.label, c.crop).diseased);
@@ -32,9 +34,11 @@ export default function Schemes({ farm, cases, gapPct, onChange }) {
     </label>
   );
 
+  // Collapsed until the farmer opens it: most visits don't need the money side.
   return (
-    <section className="card" aria-labelledby="schemes-h">
-      <h3 id="schemes-h" style={{ marginTop: 0 }}>{t('schemesTitle')}</h3>
+    <details className="card">
+      <summary style={{ cursor: 'pointer' }}><h3 style={{ display: 'inline', margin: 0 }}>{t('schemesTitle')}</h3></summary>
+      <div style={{ marginTop: 12 }} />
 
       {due && (
         <div className="deadline-banner">
@@ -54,7 +58,7 @@ export default function Schemes({ farm, cases, gapPct, onChange }) {
       {m.remedy && (
         <>
           <div className="section-h" style={{ marginTop: 14 }}>{t('remedyCost')}</div>
-          <p className="small" style={{ marginTop: 0 }}>{t('remedyQty', { q: formatQty(m.remedy.qty, m.remedy.unit), p: m.remedy.product.split(' (')[0].split(' —')[0], a: farm.acres })}</p>
+          <p className="small" style={{ marginTop: 0 }}>{t('remedyQty', { q: formatQty(m.remedy.qty, m.remedy.unit), p: m.remedy.product.split(' (')[0].split(' —')[0], a: areaLabel(farm, lang) })}</p>
           {num('remedyPricePerKgL', t(m.remedy.unit === 'ml' ? 'pricePerL' : 'pricePerKg'), t('fromShop'))}
           {m.remedy.cost != null && (
             <p className="small"><b>{t('remedyTotal', { c: rs(m.remedy.cost) })}</b> {t('noChemSubsidy')}</p>
@@ -90,7 +94,7 @@ export default function Schemes({ farm, cases, gapPct, onChange }) {
       <details className="small muted"><summary>{t('sources')}</summary>
         <ul style={{ paddingLeft: 18 }}>{Object.values(SOURCES).map(s => <li key={s}>{s}</li>)}</ul>
       </details>
-    </section>
+    </details>
   );
 }
 

@@ -6,7 +6,8 @@
 // not file a claim; it gives the farmer the record an assessor or appeal asks for.
 import { jsPDF } from 'jspdf';
 import { ipmFor } from '../content/ipm';
-import { cropDay } from '../content/rules';
+import { cropDay, sowMonthLabel } from '../content/rules';
+import { areaLabel } from '../content/area';
 
 const fmtDate = ms => new Date(ms).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const STATUS = { auto: 'On-device result', pending_review: 'Waiting for KVK expert', confirmed: 'Confirmed by KVK expert', corrected: 'Corrected by KVK expert', lab_referred: 'Lab sample requested' };
@@ -32,9 +33,10 @@ export async function evidencePdf(farm, cases) {
   rule();
 
   line('Plot', 12, 'bold', 6);
-  if (farm.farmerName) line(`Farmer: ${farm.farmerName}`);
-  line(`Crop: ${farm.crop} (${farm.variety || 'variety not given'}), sown ${farm.sowDate}, day ${cropDay(farm.sowDate)} today`);
-  line(`Area: ${farm.acres} acres (${(farm.acres * 0.4047).toFixed(2)} ha) · Taluka ${farm.taluka}, District Wardha`);
+  line(`Crop: ${farm.crop}, sown ${sowMonthLabel(farm.sowDate) || 'month not given'}, day ${cropDay(farm.sowDate)} today`);
+  const ha = (farm.acres * 0.4047).toFixed(2);
+  const inAcres = farm.areaUnit && farm.areaUnit !== 'acre' ? `${(+farm.acres).toFixed(2)} acres, ` : '';
+  line(`Area: ${areaLabel(farm)} (${inAcres}${ha} ha) · Taluka ${farm.taluka}, District Wardha`);
   line(`Location: ${(+farm.lat).toFixed(2)}° N, ${(+farm.lon).toFixed(2)}° E (rounded to about 1 km)`);
   rule();
 

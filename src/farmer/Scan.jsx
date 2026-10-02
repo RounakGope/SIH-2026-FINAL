@@ -2,22 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { useLang, LOCALE } from '../lib/i18n';
 import { loadModel, classify, modelInput, explain } from '../lib/model';
 import { loadImage, lesionMask, smallJpeg } from '../lib/image';
-import { upsertCase, newId, markTreatment } from '../lib/store';
+import { upsertCase, newId, tickCare, localDay } from '../lib/store';
 import { referralFor } from '../content/labs';
 import { ipmFor, classesFor, THRESHOLD, TIER_LABEL, CHEM_UNLOCK_INDEX } from '../content/ipm';
 import { CROPS, cropDay, stageFor, stageName, cropName } from '../content/rules';
+import { areaLabel } from '../content/area';
 import { DISTRICT } from '../content/talukas';
 import Speak from './Speak';
 
 const WALK_KEY = 'fr_walk';
 const PLANTS = 10;
+// A walk is one session in the field; photos on a later day start a new walk, which
+// becomes the next point on the progress graph.
+const WALK_HOURS = 12;
 
 export default function Scan({ farm, user, cases, goProgress }) {
   const { t, pick, lang } = useLang();
   const [model, setModel] = useState(null);
   const [walk, setWalk] = useState(() => {
     const w = readWalk();
-    return w && (w.crop || 'Cotton') === farm.crop ? w : freshWalk(farm.crop);
+    return w && (w.crop || 'Cotton') === farm.crop && Date.now() - w.createdAt < WALK_HOURS * 3600000 ? w : freshWalk(farm.crop);
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -62,7 +66,7 @@ export default function Scan({ farm, user, cases, goProgress }) {
       id: walk.id, uid: user.uid, plotId: farm.id, district: DISTRICT, taluka: farm.taluka,
       share: farm.share === true, lang, ...(farm.smsConsent && farm.phone ? { phone: farm.phone } : {}),
       sevIndex, ...followUp,
-      crop: farm.crop, variety: farm.variety, acres: farm.acres, cropDay: day, stage,
+      crop: farm.crop, acres: farm.acres, cropDay: day, stage,
       lat: +(+farm.lat).toFixed(2), lon: +(+farm.lon).toFixed(2), // ~1 km precision only
       confidence: round(primary.confidence), top3: primary.top3,
       leafPct: round(leafSev, 1), plantsInfected: inf, plantsWalked: plants.length,
@@ -222,8 +226,8 @@ function Result({ plant, farm, crop, caseId, day, stage, infected, walked, saved
       {unsure ? <Referral farm={farm} compact /> : info.diseased ? (
         <>
           {info.referLab && <Referral farm={farm} />}
-          <Ladder info={info} chemOpen={chemOpen} acres={farm.acres} caseId={caseId} done={savedCase?.treatment} />
-          {!info.referLab && chemOpen && <Cost info={info} acres={farm.acres} goProgress={goProgress} />}
+          <Ladder info={info} chemOpen={chemOpen} acres={farm.acres} area={areaLabel(farm, lang)} savedCase={savedCase} />
+          {!info.referLab && chemOpen && <Cost info={info} acres={farm.acres} area={areaLabel(farm, lang)} goProgress={goProgress} />}
         </>
       ) : null}
 
@@ -267,8 +271,12 @@ function Referral({ farm, compact }) {
   );
 }
 
-function Ladder({ info, chemOpen, acres, caseId, done }) {
-  const { t, pick, lang } = useLang();
+// Spray tanks for the farm, to one decimal: a small plot takes part of a tank.
+const tanksFor = (acres, perAcre) => Math.max(0.1, Math.round(acres * perAcre * 10) / 10);
+
+function Ladder({ info, chemOpen, acres, area, savedCase }) {
+  const { t, pick } = useLang();
+  const doneToday = savedCase?.care?.[localDay()] || [];
   return (
     <section className="card">
       <div className="section-h">{t('ipmTitle')}</div>
@@ -285,9 +293,9 @@ function Ladder({ info, chemOpen, acres, caseId, done }) {
                 {chem
                   ? (locked ? t('lockedChem') : <Txt s={s.product} />)
                   : <Txt s={pick(s.text)} />}
-                {!locked && (done?.tier === s.tier
-                  ? <div className="step-done">✓ {t('doneOn', { d: new Date(done.at).toLocaleDateString(LOCALE[lang], { day: 'numeric', month: 'short' }) })}</div>
-                  : <div><button className="btn-line btn-sm" style={{ marginTop: 6 }} onClick={() => markTreatment(caseId, s)}>{t('markDone')}</button></div>)}
+                {!locked && savedCase && (doneToday.includes(i)
+                  ? <div className="step-done">✓ {t('doneToday')}</div>
+                  : <div><button className="btn-line btn-sm" style={{ marginTop: 6 }} onClick={() => tickCare(savedCase, i, s, true)}>{t('markDone')}</button></div>)}
               </div>
             </div>
           );
@@ -295,14 +303,14 @@ function Ladder({ info, chemOpen, acres, caseId, done }) {
       </div>
       {info.steps.filter(s => s.tier === 'chemical' && chemOpen).map((s, i) => (
         <div key={i} style={{ marginTop: 12 }}>
-          <div className="section-h">{t('safeUse', { a: acres })}</div>
+          <div className="section-h">{t('safeUse', { a: area })}</div>
           <div className="safe-grid">
             {s.spot ? (
               // Spot treatment (a drench where plants were removed): dosed per litre, not per acre.
               <div className="stat"><b>{s.perLitre}</b><span>{t('perLitreSpot')}</span></div>
             ) : (
               <>
-                <div className="stat"><b>{acres * s.tanksPerAcre}</b><span>{t('tanks', { l: s.tankL })}</span></div>
+                <div className="stat"><b>{tanksFor(acres, s.tanksPerAcre)}</b><span>{t('tanks', { l: s.tankL })}</span></div>
                 <div className="stat"><b>{s.perTank ?? <span className="todo">TODO</span>}{s.perTank != null && ' ' + (s.unit || 'g')}</b><span>{t('perTank')}</span></div>
               </>
             )}
@@ -319,7 +327,7 @@ function Ladder({ info, chemOpen, acres, caseId, done }) {
   );
 }
 
-function Cost({ info, acres, goProgress }) {
+function Cost({ info, acres, area, goProgress }) {
   const { t } = useLang();
   const step = info.steps.find(s => s.tier === 'chemical' && !s.spot);
   if (!step) return null;
@@ -329,7 +337,7 @@ function Cost({ info, acres, goProgress }) {
   return (
     <section className="card">
       <div className="section-h">{t('costTitle')}</div>
-      <p className="small" style={{ margin: 0 }}>{t('costQty', { q: shown, a: acres })}</p>
+      <p className="small" style={{ margin: 0 }}>{t('costQty', { q: shown, a: area })}</p>
       <button className="btn-line btn-sm" style={{ marginTop: 8 }} onClick={goProgress}>{t('costSee')} →</button>
     </section>
   );
